@@ -24,7 +24,7 @@ cp server/.env.example server/.env
 Open `server/.env` and set at least:
 
 ```ini
-MONGO_URI=mongodb://127.0.0.1:27017/school_erp
+MONGO_URI=mongodb+srv://premandrahul_db_user:mCwDCfJvYkZhF3DS@pride-joy-erp.1sa2ilr.mongodb.net/pride_joy_erp?retryWrites=true&w=majority&appName=Pride-joy-erp
 JWT_SECRET=<a long random string>
 SEED_ADMIN_EMAIL=principal@yourschool.in
 SEED_ADMIN_PASSWORD=<a strong password>
