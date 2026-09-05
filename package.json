@@ -1,0 +1,19 @@
+{
+  "name": "pride-joy-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "School ERP (MERN) \u2014 admission, instalment-wise fee collection, receipts, reports",
+  "scripts": {
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "dev": "node node_modules/concurrently/dist/bin/concurrently.js -n API,WEB -c magenta,cyan \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "seed": "npm --prefix server run seed",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "test": "npm --prefix server run test",
+    "test:ui": "node test/ui.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "playwright": "^1.48.0"
+  }
+}
