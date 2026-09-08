@@ -236,6 +236,22 @@ export default function Settings() {
         </div>
       </Panel>
 
+      <div className="panel" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 13.5 }}>{school?.name || 'School'} ERP</div>
+          <div className="tiny muted">Admission, instalment-wise fee collection, receipts and accounts system.</div>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'right' }}>
+          <div>© {new Date().getFullYear()} All rights reserved.</div>
+          <div>
+            Developed by{' '}
+            <a href="https://twinscloud.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)', fontWeight: 600 }}>
+              Twinscloud Pvt. Ltd.
+            </a>
+          </div>
+        </div>
+      </div>
+
       {userForm && (
         <UserForm existing={userForm.id ? userForm : null} roles={matrix.roles} classes={classes}
           onClose={() => setUserForm(null)} onSave={(body) => saveUser(body, userForm.id)} />

@@ -132,6 +132,16 @@ export default function ReceiptView({ id, onClose, onChanged }) {
             <div style={{ borderTop: '1px solid #9A90A6', paddingTop: 4, minWidth: 130 }}>{r.collectedBy?.name} · Authorised</div>
           </div>
         </div>
+
+        <div className="receipt-copy">
+          <span>Computer-generated receipt</span>
+          <span>
+            Developed by{' '}
+            <a href="https://twinscloud.com" target="_blank" rel="noopener noreferrer">
+              <b>Twinscloud Pvt. Ltd.</b>
+            </a>
+          </span>
+        </div>
       </div>
     </Drawer>
   );

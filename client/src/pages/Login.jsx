@@ -42,7 +42,15 @@ export default function Login() {
           <div><b className="mono">5</b><span>roles with own access</span></div>
           <div><b className="mono">0</b><span>duplicate receipt numbers</span></div>
         </div>
-        <div style={{ fontSize: 11.5, color: 'var(--rail-dim)' }}>{school?.branch || ''}</div>
+        <div className="login-brand-foot">
+          <span>{school?.branch || ''}</span>
+          <span>
+            © {new Date().getFullYear()} Developed by{' '}
+            <a href="https://twinscloud.com" target="_blank" rel="noopener noreferrer">
+              Twinscloud Pvt. Ltd.
+            </a>
+          </span>
+        </div>
       </div>
 
       <div className="login-form">
@@ -82,6 +90,13 @@ export default function Login() {
               Forgot your password? Ask the Principal to reset it from Settings → Users.
             </p>
           )}
+
+          <div className="login-copy">
+            © {new Date().getFullYear()} Developed by{' '}
+            <a href="https://twinscloud.com" target="_blank" rel="noopener noreferrer">
+              <strong>Twinscloud Pvt. Ltd.</strong>
+            </a>
+          </div>
         </div>
       </div>
     </div>

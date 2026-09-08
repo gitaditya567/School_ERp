@@ -112,6 +112,12 @@ export default function Layout() {
             </svg>
           </button>
         </div>
+        <div className="rail-copy">
+          © {new Date().getFullYear()} Developed by{' '}
+          <a href="https://twinscloud.com" target="_blank" rel="noopener noreferrer">
+            Twinscloud Pvt. Ltd.
+          </a>
+        </div>
       </aside>
 
       <div className="main">
@@ -133,6 +139,15 @@ export default function Layout() {
           )}
         </header>
         <main className="content"><Outlet /></main>
+        <footer className="app-footer no-print">
+          <div>© {new Date().getFullYear()} {school?.name || 'School ERP'}. All rights reserved.</div>
+          <div>
+            Developed by{' '}
+            <a href="https://twinscloud.com" target="_blank" rel="noopener noreferrer" className="dev-brand">
+              Twinscloud Pvt. Ltd.
+            </a>
+          </div>
+        </footer>
       </div>
 
       {confirmOut && (
