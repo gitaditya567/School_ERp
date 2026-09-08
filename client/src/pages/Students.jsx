@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/client';
+import api, { cachedGet } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Panel, Chip, Loading, ErrorBox, Empty, Input, Select } from '../components/ui';
 import { RS, fmtDate, downloadCSV, initials } from '../lib/format';
@@ -13,20 +13,27 @@ export default function Students() {
   const [error, setError] = useState(null);
   const [f, setF] = useState({ search: '', classId: '', status: '' });
 
-  useEffect(() => { document.title = 'Student Directory'; api.get('/classes').then((d) => setClasses(d.classes)).catch(() => {}); }, []);
   useEffect(() => {
+    document.title = 'Student Directory';
+    cachedGet('/classes').then((d) => setClasses(d.classes)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    // Only debounce when user is typing, initial load should be immediate
+    const delay = f.search ? 220 : 0;
     const id = setTimeout(() => {
       setError(null);
       api.get('/students', { params: f }).then((d) => setRows(d.students)).catch(setError);
-    }, 220);
+    }, delay);
     return () => clearTimeout(id);
   }, [f.search, f.classId, f.status]);
 
   if (error) return <ErrorBox error={error} onRetry={() => setF({ ...f })} />;
 
   const exportCsv = () => downloadCSV('students.csv',
-    ['Adm No', 'Name', 'Class', 'Father', 'Mother', 'Phone', 'Net payable', 'Paid', 'Outstanding'],
-    rows.map((s) => [s.admissionNo, s.name, s.classId?.name, s.father, s.mother, s.phone,
+    ['Adm No', 'Name', 'Class', 'Father', 'Mother', 'Phone', 'Alt Phone', 'Child Aadhaar', 'Birth Cert', 'Net payable', 'Paid', 'Outstanding'],
+    rows.map((s) => [s.admissionNo, s.name, s.classId?.name, s.father, s.mother, s.phone, s.alternatePhone || '',
+      s.childAadhaar || (s.aadhaarLast4 ? `•••• ${s.aadhaarLast4}` : ''), s.birthCertificateSubmitted ? 'Submitted' : 'Pending',
       s.totals.payable, s.totals.paid, s.totals.outstanding]));
 
   return (
@@ -89,7 +96,10 @@ export default function Students() {
                   </td>
                   <td><span className="tag">{s.classId?.name}-{s.section}</span></td>
                   <td>{s.father}</td>
-                  <td className="mono tiny">{s.phone}</td>
+                  <td className="mono tiny">
+                    <div>{s.phone}</div>
+                    {s.alternatePhone && <div className="muted" style={{ fontSize: 11 }}>{s.alternatePhone}</div>}
+                  </td>
                   <td className="num">{RS(s.totals.payable)}</td>
                   <td className="num" style={{ color: 'var(--good)' }}>{RS(s.totals.paid)}</td>
                   <td className="num" style={{ fontWeight: 700, color: s.totals.outstanding ? 'var(--warn)' : 'var(--text-3)' }}>{RS(s.totals.outstanding)}</td>

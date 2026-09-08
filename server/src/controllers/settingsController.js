@@ -26,6 +26,7 @@ export const update = asyncHandler(async (req, res) => {
     }
   });
   await school.save();
+  School.invalidateCache();
   await audit(req, 'settings.update', 'School', school._id);
   res.json({ ok: true, school });
 });
@@ -40,6 +41,7 @@ export const setLogo = asyncHandler(async (req, res) => {
   const school = await School.current();
   school.logo = logo;
   await school.save();
+  School.invalidateCache();
   await audit(req, logo ? 'settings.logo.set' : 'settings.logo.clear', 'School', school._id);
   res.json({ ok: true, logo: school.logo, message: logo ? 'Logo updated.' : 'Logo removed.' });
 });

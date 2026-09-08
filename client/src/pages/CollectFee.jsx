@@ -30,7 +30,8 @@ export default function CollectFee() {
   useEffect(() => { document.title = 'Collect Fee'; }, []);
   useEffect(() => {
     if (studentId) return;
-    const id = setTimeout(() => api.get('/students', { params: { search } }).then((d) => setList(d.students)).catch(shout), 220);
+    const delay = search ? 220 : 0;
+    const id = setTimeout(() => api.get('/students', { params: { search } }).then((d) => setList(d.students)).catch(shout), delay);
     return () => clearTimeout(id);
   }, [search, studentId]);
 
@@ -112,7 +113,7 @@ export default function CollectFee() {
             <div className="avatar" style={{ background: 'var(--brand-soft)', color: 'var(--brand-ink)', border: '1px solid var(--brand-line)' }}>{initials(student.name)}</div>
             <div style={{ flex: 1 }}>
               <h3>{student.name}</h3>
-              <div className="sub">{student.admissionNo} · {student.classId?.name}-{student.section} · {student.father} · <span className="mono">{student.phone}</span></div>
+              <div className="sub">{student.admissionNo} · {student.classId?.name}-{student.section} · {student.father} · <span className="mono">{student.phone}</span>{student.alternatePhone ? <span className="mono muted"> / {student.alternatePhone}</span> : null}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div className="lbl">Outstanding</div>

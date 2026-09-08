@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import { asyncHandler, ApiError, audit } from '../utils/helpers.js';
+import { invalidateUserCache } from '../middleware/auth.js';
 
 export const list = asyncHandler(async (_req, res) => {
   const users = await User.find().populate('classId', 'name').sort('name');
@@ -28,6 +29,7 @@ export const update = asyncHandler(async (req, res) => {
   if (typeof active === 'boolean') user.active = active;
   if (password) await user.setPassword(password);
   await user.save();
+  invalidateUserCache(user._id);
   await audit(req, 'user.update', 'User', user._id);
   res.json({ ok: true, user: user.toPublic() });
 });
@@ -40,6 +42,7 @@ export const remove = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'At least one active Principal account must remain.');
   }
   await user.deleteOne();
+  invalidateUserCache(req.params.id);
   await audit(req, 'user.delete', 'User', req.params.id);
   res.json({ ok: true, message: 'User removed.' });
 });

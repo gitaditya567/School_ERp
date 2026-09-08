@@ -16,7 +16,11 @@ export default function Receipts() {
 
   const load = () => { setError(null); api.get('/receipts', { params: f }).then(setData).catch(setError); };
   useEffect(() => { document.title = 'Receipt Register'; }, []);
-  useEffect(() => { const t = setTimeout(load, 220); return () => clearTimeout(t); }, [f.search, f.from, f.to, f.mode]);
+  useEffect(() => {
+    const delay = f.search ? 220 : 0;
+    const t = setTimeout(load, delay);
+    return () => clearTimeout(t);
+  }, [f.search, f.from, f.to, f.mode]);
 
   if (error) return <ErrorBox error={error} onRetry={load} />;
   if (!data) return <Loading />;

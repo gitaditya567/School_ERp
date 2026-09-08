@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import api from '../api/client';
+import api, { clearApiCache } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Panel, Chip, Drawer, Field, Input, Select, Loading, ErrorBox, Empty } from '../components/ui';
@@ -22,6 +22,7 @@ export default function FeeMaster() {
   const [modal, setModal] = useState(null); // {type, payload}
 
   const loadAll = async () => {
+    clearApiCache('/classes');
     setError(null);
     try {
       const [c, h] = await Promise.all([api.get('/classes'), api.get('/fee-heads')]);

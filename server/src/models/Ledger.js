@@ -19,6 +19,8 @@ const ledgerSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 ledgerSchema.index({ student: 1, instNo: 1 }, { unique: true });
+ledgerSchema.index({ classId: 1, dueDate: 1 });
+ledgerSchema.index({ student: 1, dueDate: 1 });
 
 ledgerSchema.virtual('balance').get(function balance() {
   return Math.max(0, this.gross - this.discount + this.lateFee - this.paid);

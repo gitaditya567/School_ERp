@@ -33,4 +33,7 @@ const receiptSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+receiptSchema.index({ 'cancelled.at': 1, date: 1 });
+receiptSchema.index({ classId: 1, date: 1 });
+
 export default mongoose.model('Receipt', receiptSchema);

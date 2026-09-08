@@ -23,4 +23,29 @@ api.interceptors.response.use(
   },
 );
 
+// In-memory cache for ultra-fast navigation between tabs
+const memoryCache = new Map();
+const CACHE_TTL = 30 * 1000; // 30 seconds
+
+export const cachedGet = async (url, params = {}) => {
+  const key = `${url}?${JSON.stringify(params)}`;
+  const hit = memoryCache.get(key);
+  if (hit && Date.now() - hit.t < CACHE_TTL) {
+    return hit.data;
+  }
+  const data = await api.get(url, { params });
+  memoryCache.set(key, { data, t: Date.now() });
+  return data;
+};
+
+export const clearApiCache = (urlPrefix) => {
+  if (!urlPrefix) {
+    memoryCache.clear();
+    return;
+  }
+  for (const k of memoryCache.keys()) {
+    if (k.startsWith(urlPrefix)) memoryCache.delete(k);
+  }
+};
+
 export default api;

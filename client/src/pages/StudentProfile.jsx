@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Panel, Chip, Loading, ErrorBox, Empty, Bar } from '../components/ui';
+import { Panel, Chip, Loading, ErrorBox, Empty, Bar, Drawer, Field, Input } from '../components/ui';
 import StudentPhotoPicker from '../components/StudentPhotoPicker';
 import ReceiptView from './ReceiptView';
 import { RS, fmtDate, initials, statusOf } from '../lib/format';
@@ -17,6 +17,10 @@ export default function StudentProfile() {
   const [error, setError] = useState(null);
   const [receiptId, setReceiptId] = useState(null);
   const [editingPhoto, setEditingPhoto] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [editErrors, setEditErrors] = useState({});
+  const [savingDetails, setSavingDetails] = useState(false);
 
   const load = () => { setError(null); api.get(`/students/${id}`).then(setData).catch(setError); };
   useEffect(() => { document.title = 'Student Ledger'; load(); }, [id]);
@@ -34,6 +38,66 @@ export default function StudentProfile() {
       shout(e);
     }
   };
+
+  const startEdit = () => {
+    setEditForm({
+      name: s.name || '',
+      dob: s.dob ? s.dob.slice(0, 10) : '',
+      bloodGroup: s.bloodGroup || '',
+      father: s.father || '',
+      mother: s.mother || '',
+      phone: s.phone || '',
+      alternatePhone: s.alternatePhone || '',
+      email: s.email || '',
+      address: s.address || '',
+      occupation: s.occupation || '',
+      childAadhaar: s.childAadhaar || '',
+      fatherAadhaar: s.fatherAadhaar || '',
+      motherAadhaar: s.motherAadhaar || '',
+      birthCertificateSubmitted: Boolean(s.birthCertificateSubmitted),
+    });
+    setEditErrors({});
+    setEditingDetails(true);
+  };
+
+  const saveDetails = async () => {
+    const err = {};
+    if (!editForm.name.trim()) err.name = 'Name is required.';
+    if (!editForm.father.trim()) err.father = 'Father name is required.';
+    if (!/^[6-9]\d{9}$/.test(editForm.phone)) err.phone = 'Enter a valid 10-digit mobile number.';
+    if (editForm.alternatePhone && !/^[6-9]\d{9}$/.test(editForm.alternatePhone)) {
+      err.alternatePhone = 'Enter a valid 10-digit mobile number.';
+    }
+    if (editForm.childAadhaar && !/^\d{12}$/.test(editForm.childAadhaar)) {
+      err.childAadhaar = 'Child Aadhaar must be exactly 12 digits.';
+    }
+    if (editForm.fatherAadhaar && !/^\d{12}$/.test(editForm.fatherAadhaar)) {
+      err.fatherAadhaar = 'Father Aadhaar must be exactly 12 digits.';
+    }
+    if (editForm.motherAadhaar && !/^\d{12}$/.test(editForm.motherAadhaar)) {
+      err.motherAadhaar = 'Mother Aadhaar must be exactly 12 digits.';
+    }
+
+    if (Object.keys(err).length > 0) {
+      setEditErrors(err);
+      return;
+    }
+
+    setSavingDetails(true);
+    try {
+      await api.patch(`/students/${s._id}`, editForm);
+      toast('Student details updated');
+      setEditingDetails(false);
+      load();
+    } catch (e) {
+      shout(e);
+      if (e.details) setEditErrors(e.details);
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
+  const digits = (k, len) => (e) => setEditForm((p) => ({ ...p, [k]: e.target.value.replace(/\D/g, '').slice(0, len) }));
 
   return (
     <div className="stack">
@@ -71,21 +135,44 @@ export default function StudentProfile() {
             )}
           </div>
           <button type="button" className="btn btn-sm" onClick={() => nav('/students')}>← Directory</button>
+          {can('admit') && (
+            <button type="button" className="btn btn-sm" onClick={startEdit}>Edit Details</button>
+          )}
           {can('collect')
             ? <button type="button" className="btn btn-primary btn-sm" onClick={() => nav(`/collect?student=${s._id}`)}>Collect Fee</button>
             : <span className="locked-note">View only</span>}
         </div>
         <div className="panel-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 20 }}>
           <dl className="def">
-            <dt>Father</dt><dd>{s.father}</dd>
-            <dt>Mother</dt><dd>{s.mother || '—'}</dd>
-            <dt>Mobile</dt><dd className="mono">{s.phone}</dd>
+            <dt>Father</dt>
+            <dd>
+              {s.father}
+              {s.fatherAadhaar ? <div className="mono tiny muted">Aadhaar: {s.fatherAadhaar}</div> : null}
+            </dd>
+            <dt>Mother</dt>
+            <dd>
+              {s.mother || '—'}
+              {s.motherAadhaar ? <div className="mono tiny muted">Aadhaar: {s.motherAadhaar}</div> : null}
+            </dd>
+            <dt>Primary Mobile</dt><dd className="mono">{s.phone}</dd>
+            <dt>Alternate Mobile</dt><dd className="mono">{s.alternatePhone || '—'}</dd>
             <dt>Email</dt><dd className="tiny">{s.email || '—'}</dd>
           </dl>
           <dl className="def">
             <dt>Date of birth</dt><dd>{fmtDate(s.dob)}</dd>
             <dt>Blood group</dt><dd>{s.bloodGroup || '—'}</dd>
-            <dt>Aadhaar</dt><dd className="mono">{s.aadhaarLast4 ? `•••• ${s.aadhaarLast4}` : '—'}</dd>
+            <dt>Child Aadhaar</dt>
+            <dd className="mono">
+              {s.childAadhaar || (s.aadhaarLast4 ? `•••• ${s.aadhaarLast4}` : '—')}
+            </dd>
+            <dt>Birth Certificate</dt>
+            <dd>
+              {s.birthCertificateSubmitted ? (
+                <Chip tone="paid">Submitted</Chip>
+              ) : (
+                <Chip tone="up">Not submitted</Chip>
+              )}
+            </dd>
             <dt>Address</dt><dd>{s.address || '—'}</dd>
           </dl>
           <dl className="def">
@@ -166,6 +253,125 @@ export default function StudentProfile() {
       </div>
 
       {receiptId && <ReceiptView id={receiptId} onClose={() => setReceiptId(null)} onChanged={load} />}
+
+      {editingDetails && editForm && (
+        <Drawer
+          wide
+          title={`Edit Details · ${s.admissionNo}`}
+          sub={s.name}
+          onClose={() => setEditingDetails(false)}
+          footer={(
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
+              <button type="button" className="btn" onClick={() => setEditingDetails(false)}>Cancel</button>
+              <button type="button" className="btn btn-primary" disabled={savingDetails} onClick={saveDetails}>
+                {savingDetails ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          )}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <div className="lbl" style={{ marginBottom: 8, color: 'var(--brand)', fontWeight: 700 }}>Basic Info</div>
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))' }}>
+                <Field label="Full Name *" error={editErrors.name}>
+                  <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} error={editErrors.name} />
+                </Field>
+                <Field label="Date of Birth">
+                  <Input type="date" value={editForm.dob} onChange={(e) => setEditForm({ ...editForm, dob: e.target.value })} />
+                </Field>
+                <Field label="Blood Group">
+                  <Input value={editForm.bloodGroup} onChange={(e) => setEditForm({ ...editForm, bloodGroup: e.target.value })} placeholder="e.g. O+" />
+                </Field>
+              </div>
+            </div>
+
+            <div style={{ paddingTop: 12, borderTop: '1px dashed var(--line)' }}>
+              <div className="lbl" style={{ marginBottom: 8, color: 'var(--brand)', fontWeight: 700 }}>Parent / Guardian Info & Aadhaar</div>
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))' }}>
+                <Field label="Father Name *" error={editErrors.father}>
+                  <Input value={editForm.father} onChange={(e) => setEditForm({ ...editForm, father: e.target.value })} error={editErrors.father} />
+                </Field>
+                <Field label="Mother Name">
+                  <Input value={editForm.mother} onChange={(e) => setEditForm({ ...editForm, mother: e.target.value })} />
+                </Field>
+                <Field label={`Father Aadhaar (12 digits)${editForm.fatherAadhaar ? ` · ${editForm.fatherAadhaar.length}/12` : ''}`} error={editErrors.fatherAadhaar}>
+                  <Input className="input mono" inputMode="numeric" maxLength={12} value={editForm.fatherAadhaar}
+                    onChange={digits('fatherAadhaar', 12)} placeholder="12-digit Aadhaar" error={editErrors.fatherAadhaar} />
+                </Field>
+                <Field label={`Mother Aadhaar (12 digits)${editForm.motherAadhaar ? ` · ${editForm.motherAadhaar.length}/12` : ''}`} error={editErrors.motherAadhaar}>
+                  <Input className="input mono" inputMode="numeric" maxLength={12} value={editForm.motherAadhaar}
+                    onChange={digits('motherAadhaar', 12)} placeholder="12-digit Aadhaar" error={editErrors.motherAadhaar} />
+                </Field>
+              </div>
+            </div>
+
+            <div style={{ paddingTop: 12, borderTop: '1px dashed var(--line)' }}>
+              <div className="lbl" style={{ marginBottom: 8, color: 'var(--brand)', fontWeight: 700 }}>Contact Info (2 Mobile Numbers)</div>
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))' }}>
+                <Field label={`Primary Mobile * · ${editForm.phone.length}/10`} error={editErrors.phone}>
+                  <Input className="input mono" inputMode="numeric" maxLength={10} value={editForm.phone}
+                    onChange={digits('phone', 10)} placeholder="10 digits" error={editErrors.phone} />
+                </Field>
+                <Field label={`Alternate Mobile · ${editForm.alternatePhone ? `${editForm.alternatePhone.length}/10` : 'Optional'}`} error={editErrors.alternatePhone}>
+                  <Input className="input mono" inputMode="numeric" maxLength={10} value={editForm.alternatePhone}
+                    onChange={digits('alternatePhone', 10)} placeholder="Optional 2nd mobile" error={editErrors.alternatePhone} />
+                </Field>
+                <Field label="Email">
+                  <Input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+                </Field>
+                <Field label="Occupation">
+                  <Input value={editForm.occupation} onChange={(e) => setEditForm({ ...editForm, occupation: e.target.value })} />
+                </Field>
+                <Field label="Address" style={{ gridColumn: '1/-1' }}>
+                  <textarea className="input" rows={2} value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+                </Field>
+              </div>
+            </div>
+
+            <div style={{ paddingTop: 12, borderTop: '1px dashed var(--line)' }}>
+              <div className="lbl" style={{ marginBottom: 8, color: 'var(--brand)', fontWeight: 700 }}>Child Identification & Documents</div>
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', alignItems: 'center', gap: 14 }}>
+                <Field label={`Child Aadhaar (12 digits)${editForm.childAadhaar ? ` · ${editForm.childAadhaar.length}/12` : ''}`} error={editErrors.childAadhaar}>
+                  <Input className="input mono" inputMode="numeric" maxLength={12} value={editForm.childAadhaar}
+                    onChange={digits('childAadhaar', 12)} placeholder="12-digit Aadhaar" error={editErrors.childAadhaar} />
+                </Field>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 'var(--r)',
+                    background: editForm.birthCertificateSubmitted ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2)',
+                    border: `1px solid ${editForm.birthCertificateSubmitted ? '#10b981' : 'var(--line)'}`,
+                    cursor: 'pointer',
+                    marginTop: 4
+                  }}
+                  onClick={() => setEditForm((p) => ({ ...p, birthCertificateSubmitted: !p.birthCertificateSubmitted }))}
+                >
+                  <input
+                    type="checkbox"
+                    id="editBirthCert"
+                    checked={editForm.birthCertificateSubmitted}
+                    onChange={(e) => setEditForm((p) => ({ ...p, birthCertificateSubmitted: e.target.checked }))}
+                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#10b981' }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <label htmlFor="editBirthCert" style={{ cursor: 'pointer', flex: 1, margin: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: editForm.birthCertificateSubmitted ? '#10b981' : 'var(--text)' }}>
+                      Child Birth Certificate Submitted
+                    </div>
+                    <div className="tiny muted" style={{ fontSize: 11 }}>
+                      Check if birth certificate is verified and collected
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Drawer>
+      )}
     </div>
   );
 }

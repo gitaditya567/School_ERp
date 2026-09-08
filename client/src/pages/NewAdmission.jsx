@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/client';
+import api, { cachedGet } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { Panel, Field, Input, Select, Loading, Empty } from '../components/ui';
 import StudentPhotoPicker from '../components/StudentPhotoPicker';
@@ -19,13 +19,14 @@ export default function NewAdmission() {
   const [errors, setErrors] = useState({});
   const [f, setF] = useState({
     admissionDate: today, name: '', dob: '', gender: 'F', classId: '', section: 'A', bloodGroup: 'O+', photo: '',
-    father: '', mother: '', phone: '', email: '', address: '', occupation: '', aadhaarLast4: '',
+    father: '', mother: '', phone: '', alternatePhone: '', email: '', address: '', occupation: '',
+    childAadhaar: '', fatherAadhaar: '', motherAadhaar: '', birthCertificateSubmitted: false,
     carryForward: 0, concessionReason: '', concessions: {},
   });
 
   useEffect(() => {
     document.title = 'New Admission';
-    api.get('/classes').then((d) => {
+    cachedGet('/classes').then((d) => {
       setClasses(d.classes);
       setF((v) => ({ ...v, classId: v.classId || d.classes[0]?.id || '' }));
     }).catch(shout);
@@ -55,9 +56,12 @@ export default function NewAdmission() {
     if (s === 2) {
       if (f.father.trim().length < 3) err.father = "Enter the father's or guardian's name.";
       if (!/^[6-9]\d{9}$/.test(f.phone)) err.phone = 'Enter a 10-digit mobile number starting with 6, 7, 8 or 9.';
+      if (f.alternatePhone && !/^[6-9]\d{9}$/.test(f.alternatePhone)) err.alternatePhone = 'Enter a 10-digit mobile number starting with 6, 7, 8 or 9.';
       if (f.email && !/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(f.email)) err.email = 'Enter a valid email address.';
       if (f.address.trim().length < 8) err.address = 'Enter the address (at least 8 characters).';
-      if (f.aadhaarLast4 && !/^\d{4}$/.test(f.aadhaarLast4)) err.aadhaarLast4 = 'Enter exactly 4 digits.';
+      if (f.childAadhaar && !/^\d{12}$/.test(f.childAadhaar)) err.childAadhaar = 'Child Aadhaar must be exactly 12 digits.';
+      if (f.fatherAadhaar && !/^\d{12}$/.test(f.fatherAadhaar)) err.fatherAadhaar = 'Father Aadhaar must be exactly 12 digits.';
+      if (f.motherAadhaar && !/^\d{12}$/.test(f.motherAadhaar)) err.motherAadhaar = 'Mother Aadhaar must be exactly 12 digits.';
     }
     if (s === 3) {
       const given = Object.values(f.concessions).reduce((a, b) => a + (Number(b) || 0), 0);
@@ -135,25 +139,99 @@ export default function NewAdmission() {
           )}
 
           {step === 2 && (
-            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))' }}>
-              <Field label="Father / Guardian *" error={errors.father}>
-                <Input maxLength={50} value={f.father} onChange={letters('father')} error={errors.father} />
-              </Field>
-              <Field label="Mother"><Input maxLength={50} value={f.mother} onChange={letters('mother')} /></Field>
-              <Field label={`Mobile * ${f.phone.length}/10`} error={errors.phone}>
-                <Input className="input mono" inputMode="numeric" maxLength={10} value={f.phone} onChange={digits('phone', 10)} placeholder="10 digits" error={errors.phone} />
-              </Field>
-              <Field label="Email" error={errors.email}>
-                <Input type="email" maxLength={60} value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="name@example.com" error={errors.email} />
-              </Field>
-              <Field label="Address *" error={errors.address} style={{ gridColumn: '1/-1' }}>
-                <textarea className={`input${errors.address ? ' invalid' : ''}`} rows={2} maxLength={160}
-                  value={f.address} onChange={(e) => set('address', e.target.value)} />
-              </Field>
-              <Field label="Occupation"><Input maxLength={40} value={f.occupation} onChange={(e) => set('occupation', e.target.value)} /></Field>
-              <Field label={`Aadhaar — last 4 digits ${f.aadhaarLast4.length}/4`} error={errors.aadhaarLast4}>
-                <Input inputMode="numeric" maxLength={4} value={f.aadhaarLast4} onChange={digits('aadhaarLast4', 4)} placeholder="0000" error={errors.aadhaarLast4} />
-              </Field>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <div className="lbl" style={{ marginBottom: 10, color: 'var(--brand)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 11 }}>
+                  Parent / Guardian Details
+                </div>
+                <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))' }}>
+                  <Field label="Father / Guardian Name *" error={errors.father}>
+                    <Input maxLength={50} value={f.father} onChange={letters('father')} placeholder="e.g. Rajesh Kumar" error={errors.father} />
+                  </Field>
+                  <Field label="Mother Name">
+                    <Input maxLength={50} value={f.mother} onChange={letters('mother')} placeholder="e.g. Sunita Devi" />
+                  </Field>
+                  <Field label={`Father Aadhaar (12 digits)${f.fatherAadhaar ? ` · ${f.fatherAadhaar.length}/12` : ''}`} error={errors.fatherAadhaar}>
+                    <Input className="input mono" inputMode="numeric" maxLength={12} value={f.fatherAadhaar}
+                      onChange={digits('fatherAadhaar', 12)} placeholder="12-digit Aadhaar" error={errors.fatherAadhaar} />
+                  </Field>
+                  <Field label={`Mother Aadhaar (12 digits)${f.motherAadhaar ? ` · ${f.motherAadhaar.length}/12` : ''}`} error={errors.motherAadhaar}>
+                    <Input className="input mono" inputMode="numeric" maxLength={12} value={f.motherAadhaar}
+                      onChange={digits('motherAadhaar', 12)} placeholder="12-digit Aadhaar" error={errors.motherAadhaar} />
+                  </Field>
+                </div>
+              </div>
+
+              <div style={{ paddingTop: 14, borderTop: '1px dashed var(--line)' }}>
+                <div className="lbl" style={{ marginBottom: 10, color: 'var(--brand)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 11 }}>
+                  Contact Information (2 Mobile Numbers)
+                </div>
+                <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))' }}>
+                  <Field label={`Primary Mobile * · ${f.phone.length}/10`} error={errors.phone}>
+                    <Input className="input mono" inputMode="numeric" maxLength={10} value={f.phone}
+                      onChange={digits('phone', 10)} placeholder="10 digits (6-9)" error={errors.phone} />
+                  </Field>
+                  <Field label={`Alternate Mobile · ${f.alternatePhone ? `${f.alternatePhone.length}/10` : 'Optional'}`} error={errors.alternatePhone}>
+                    <Input className="input mono" inputMode="numeric" maxLength={10} value={f.alternatePhone}
+                      onChange={digits('alternatePhone', 10)} placeholder="Optional 2nd mobile" error={errors.alternatePhone} />
+                  </Field>
+                  <Field label="Email" error={errors.email}>
+                    <Input type="email" maxLength={60} value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="name@example.com" error={errors.email} />
+                  </Field>
+                  <Field label="Occupation">
+                    <Input maxLength={40} value={f.occupation} onChange={(e) => set('occupation', e.target.value)} placeholder="e.g. Business / Service" />
+                  </Field>
+                  <Field label="Address *" error={errors.address} style={{ gridColumn: '1/-1' }}>
+                    <textarea className={`input${errors.address ? ' invalid' : ''}`} rows={2} maxLength={160}
+                      value={f.address} onChange={(e) => set('address', e.target.value)} placeholder="Full residential address" />
+                  </Field>
+                </div>
+              </div>
+
+              <div style={{ paddingTop: 14, borderTop: '1px dashed var(--line)' }}>
+                <div className="lbl" style={{ marginBottom: 10, color: 'var(--brand)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 11 }}>
+                  Child Identification & Submitted Documents
+                </div>
+                <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', alignItems: 'center', gap: 14 }}>
+                  <Field label={`Child Aadhaar (12 digits)${f.childAadhaar ? ` · ${f.childAadhaar.length}/12` : ''}`} error={errors.childAadhaar}>
+                    <Input className="input mono" inputMode="numeric" maxLength={12} value={f.childAadhaar}
+                      onChange={digits('childAadhaar', 12)} placeholder="12-digit Aadhaar" error={errors.childAadhaar} />
+                  </Field>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 14px',
+                      borderRadius: 'var(--r)',
+                      background: f.birthCertificateSubmitted ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2)',
+                      border: `1px solid ${f.birthCertificateSubmitted ? '#10b981' : 'var(--line)'}`,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      marginTop: 4
+                    }}
+                    onClick={() => set('birthCertificateSubmitted', !f.birthCertificateSubmitted)}
+                  >
+                    <input
+                      type="checkbox"
+                      id="birthCertCheck"
+                      checked={f.birthCertificateSubmitted}
+                      onChange={(e) => set('birthCertificateSubmitted', e.target.checked)}
+                      style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#10b981' }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <label htmlFor="birthCertCheck" style={{ cursor: 'pointer', flex: 1, margin: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: f.birthCertificateSubmitted ? '#10b981' : 'var(--text)' }}>
+                        Child Birth Certificate Submitted
+                      </div>
+                      <div className="tiny muted" style={{ fontSize: 11 }}>
+                        Tick if birth certificate copy has been received
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

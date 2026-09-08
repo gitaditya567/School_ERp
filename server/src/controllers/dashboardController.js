@@ -19,10 +19,18 @@ export const summary = asyncHandler(async (req, res) => {
   const thisMonth = months[months.length - 1];
   const prevMonth = months[months.length - 2];
 
-  const [ledger, students, classes] = await Promise.all([
-    Ledger.find(scope),
+  const [ledger, students, classes, receipts, expenses, concessionCount] = await Promise.all([
+    Ledger.find(scope).lean(),
     Student.countDocuments(scope),
-    Class.find(req.scopeClass ? { _id: req.scopeClass } : {}).select('name'),
+    Class.find(req.scopeClass ? { _id: req.scopeClass } : {}).select('name').lean(),
+    Receipt.find({
+      ...scope, 'cancelled.at': null,
+      date: { $gte: startOfMonth(months[0]), $lte: endOfMonth(thisMonth) },
+    }).select('date total').lean(),
+    req.scopeClass ? Promise.resolve([]) : Expense.find({
+      date: { $gte: startOfMonth(months[0]), $lte: endOfMonth(thisMonth) },
+    }).select('date amount').lean(),
+    Concession.countDocuments(scope),
   ]);
 
   const totals = ledger.reduce((t, l) => {
@@ -36,14 +44,6 @@ export const summary = asyncHandler(async (req, res) => {
   totals.collectedPct = totals.netDemand ? Math.round((totals.paid / totals.netDemand) * 100) : 0;
 
   // month series
-  const receipts = await Receipt.find({
-    ...scope, 'cancelled.at': null,
-    date: { $gte: startOfMonth(months[0]), $lte: endOfMonth(thisMonth) },
-  }).select('date total');
-  const expenses = req.scopeClass ? [] : await Expense.find({
-    date: { $gte: startOfMonth(months[0]), $lte: endOfMonth(thisMonth) },
-  }).select('date amount');
-
   const series = months.map((m) => ({ month: m, collection: 0, expense: 0 }));
   const idx = Object.fromEntries(months.map((m, i) => [m, i]));
   receipts.forEach((r) => { const i = idx[monthKey(r.date)]; if (i != null) series[i].collection += r.total; });
@@ -80,14 +80,12 @@ export const summary = asyncHandler(async (req, res) => {
     perStudent.set(String(l.student), d);
   });
   const top = [...perStudent.values()].sort((a, b) => b.overdue - a.overdue).slice(0, 8);
-  const docs = await Student.find({ _id: { $in: top.map((t) => t.student) } })
-    .populate('classId', 'name').select('name admissionNo classId');
+  const docs = top.length ? await Student.find({ _id: { $in: top.map((t) => t.student) } })
+    .populate('classId', 'name').select('name admissionNo classId').lean() : [];
   const defaulters = top.map((t) => {
     const s = docs.find((d) => String(d._id) === String(t.student));
     return { id: t.student, name: s?.name, admissionNo: s?.admissionNo, className: s?.classId?.name, overdue: t.overdue, instalments: t.count };
   });
-
-  const concessionCount = await Concession.countDocuments(scope);
   const collectionThis = series[series.length - 1].collection;
   const collectionPrev = series[series.length - 2]?.collection || 0;
 

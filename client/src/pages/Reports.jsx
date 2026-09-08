@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/client';
+import api, { cachedGet } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Panel, Chip, Loading, ErrorBox, Empty, Input, Select } from '../components/ui';
 import { RS, fmtDate, monthName, downloadCSV } from '../lib/format';
@@ -20,7 +20,10 @@ export default function Reports() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => { document.title = 'Reports'; api.get('/classes').then((d) => setClasses(d.classes)).catch(() => {}); }, []);
+  useEffect(() => {
+    document.title = 'Reports';
+    cachedGet('/classes').then((d) => setClasses(d.classes)).catch(() => {});
+  }, []);
   useEffect(() => {
     setData(null); setError(null);
     api.get(`/reports/${key}`, { params: f }).then(setData).catch(setError);

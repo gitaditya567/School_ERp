@@ -15,11 +15,15 @@ export const list = asyncHandler(async (req, res) => {
   if (mode) filter.mode = mode;
   if (search.trim()) filter.receiptNo = new RegExp(search.trim(), 'i');
 
-  const receipts = await Receipt.find(filter)
-    .populate('student', 'name admissionNo')
-    .populate('classId', 'name')
-    .populate('collectedBy', 'name')
-    .sort('-date -seq').limit(Number(limit));
+  const [receipts, counter, school] = await Promise.all([
+    Receipt.find(filter)
+      .populate('student', 'name admissionNo')
+      .populate('classId', 'name')
+      .populate('collectedBy', 'name')
+      .sort('-date -seq').limit(Number(limit)).lean(),
+    Counter.findOne({ key: 'receipt' }).lean(),
+    School.current(),
+  ]);
 
   const totals = receipts.reduce((t, r) => {
     if (r.cancelled?.at) return t;
@@ -28,18 +32,20 @@ export const list = asyncHandler(async (req, res) => {
     return t;
   }, { gross: 0, discount: 0, lateFee: 0, total: 0, count: 0, byMode: {} });
 
-  const nextSeq = (await Counter.findOne({ key: 'receipt' }))?.seq || 0;
-  const school = await School.current();
+  const nextSeq = counter?.seq || 0;
   res.json({ ok: true, receipts, totals, nextReceiptNo: `${school.receiptPrefix}${String(nextSeq + 1).padStart(4, '0')}` });
 });
 
 export const get = asyncHandler(async (req, res) => {
-  const receipt = await Receipt.findById(req.params.id)
-    .populate('student', 'name admissionNo father section phone')
-    .populate('classId', 'name')
-    .populate('collectedBy', 'name');
+  const [receipt, school] = await Promise.all([
+    Receipt.findById(req.params.id)
+      .populate('student', 'name admissionNo father section phone')
+      .populate('classId', 'name')
+      .populate('collectedBy', 'name').lean(),
+    School.current(),
+  ]);
   if (!receipt) throw new ApiError(404, 'Receipt not found.');
-  res.json({ ok: true, receipt, amountInWords: amountInWords(receipt.total), school: await School.current() });
+  res.json({ ok: true, receipt, amountInWords: amountInWords(receipt.total), school });
 });
 
 /** POST /api/receipts/:id/cancel — reverses the ledger, keeps the number burnt. */

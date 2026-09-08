@@ -23,19 +23,39 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     (async () => {
+      const token = localStorage.getItem('erp_token');
       try {
-        const s = await api.get('/auth/status');
-        setNeedsSetup(s.needsSetup);
-        if (!s.needsSetup) setSchool((prev) => prev || s.school);
-      } catch { /* API down — the login screen will say so */ }
-      if (localStorage.getItem('erp_token')) await loadMe();
-      setLoading(false);
+        const [statusRes, meRes] = await Promise.all([
+          api.get('/auth/status').catch(() => null),
+          token ? api.get('/auth/me').catch(() => null) : Promise.resolve(null),
+        ]);
+        if (statusRes) {
+          setNeedsSetup(statusRes.needsSetup);
+          if (!statusRes.needsSetup && statusRes.school) setSchool((prev) => prev || statusRes.school);
+        }
+        if (meRes?.ok) {
+          setUser(meRes.user);
+          setRole(meRes.role);
+          if (meRes.school) setSchool(meRes.school);
+        } else if (token && !meRes?.ok) {
+          localStorage.removeItem('erp_token');
+          setUser(null);
+          setRole(null);
+        }
+      } catch {
+        /* network error handling */
+      } finally {
+        setLoading(false);
+      }
     })();
-  }, [loadMe]);
+  }, []);
 
   const finishAuth = (data) => {
     localStorage.setItem('erp_token', data.token);
-    setUser(data.user); setRole(data.role); setNeedsSetup(false);
+    setUser(data.user);
+    setRole(data.role);
+    if (data.school) setSchool(data.school);
+    setNeedsSetup(false);
     return loadMe();
   };
 

@@ -19,11 +19,25 @@ const schoolSchema = new mongoose.Schema({
   strikeOffNote: { type: String, default: '' },
 }, { timestamps: true });
 
-/** Singleton — one school document per database. */
-schoolSchema.statics.current = async function current() {
+let cachedSchool = null;
+let cacheTime = 0;
+const CACHE_TTL = 60 * 1000; // 1 minute cache
+
+/** Singleton — one school document per database with in-memory caching. */
+schoolSchema.statics.current = async function current(forceRefresh = false) {
+  if (!forceRefresh && cachedSchool && (Date.now() - cacheTime < CACHE_TTL)) {
+    return cachedSchool;
+  }
   let doc = await this.findOne();
   if (!doc) doc = await this.create({});
+  cachedSchool = doc;
+  cacheTime = Date.now();
   return doc;
+};
+
+schoolSchema.statics.invalidateCache = function invalidateCache() {
+  cachedSchool = null;
+  cacheTime = 0;
 };
 
 export default mongoose.model('School', schoolSchema);

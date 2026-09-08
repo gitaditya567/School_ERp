@@ -50,16 +50,31 @@ export const deleteHead = asyncHandler(async (req, res) => {
 
 /* -------------------------------- classes ------------------------------- */
 
-const withCounts = async (classes) => {
-  const counts = await Student.aggregate([{ $group: { _id: '$classId', n: { $sum: 1 } } }]);
-  const map = Object.fromEntries(counts.map((c) => [String(c._id), c.n]));
-  return classes.map((c) => ({ ...c.toJSON(), students: map[String(c._id)] || 0 }));
+let cachedClasses = null;
+let cachedClassesTime = 0;
+const CLASSES_CACHE_TTL = 30 * 1000;
+
+export const invalidateClassesCache = () => {
+  cachedClasses = null;
+  cachedClassesTime = 0;
 };
 
 export const listClasses = asyncHandler(async (req, res) => {
   const filter = req.scopeClass ? { _id: req.scopeClass } : {};
-  const classes = await Class.find(filter).populate('plan.parts.head', 'name code type').sort('order name');
-  res.json({ ok: true, classes: await withCounts(classes) });
+  if (!req.scopeClass && cachedClasses && (Date.now() - cachedClassesTime < CLASSES_CACHE_TTL)) {
+    return res.json({ ok: true, classes: cachedClasses });
+  }
+  const [classes, counts] = await Promise.all([
+    Class.find(filter).populate('plan.parts.head', 'name code type').sort('order name'),
+    Student.aggregate([{ $group: { _id: '$classId', n: { $sum: 1 } } }]),
+  ]);
+  const map = Object.fromEntries(counts.map((c) => [String(c._id), c.n]));
+  const result = classes.map((c) => ({ ...c.toJSON(), students: map[String(c._id)] || 0 }));
+  if (!req.scopeClass) {
+    cachedClasses = result;
+    cachedClassesTime = Date.now();
+  }
+  res.json({ ok: true, classes: result });
 });
 
 export const getClass = asyncHandler(async (req, res) => {
@@ -80,6 +95,7 @@ export const createClass = asyncHandler(async (req, res) => {
   }
   const order = await Class.countDocuments();
   const klass = await Class.create({ name, code, status: status || 'draft', source: source || `Added by ${req.user.name}`, order, plan });
+  invalidateClassesCache();
   await audit(req, 'class.create', 'Class', klass._id, { name, copiedFrom: copyFrom || null });
   res.status(201).json({ ok: true, class: klass.toJSON() });
 });
@@ -92,6 +108,7 @@ export const updateClass = asyncHandler(async (req, res) => {
   if (status) klass.status = status;
   if (source !== undefined) klass.source = source;
   await klass.save();
+  invalidateClassesCache();
   await audit(req, 'class.update', 'Class', klass._id);
   res.json({ ok: true, class: klass.toJSON() });
 });
@@ -102,6 +119,7 @@ export const deleteClass = asyncHandler(async (req, res) => {
   if (await Class.countDocuments() < 2) throw new ApiError(409, 'At least one class must exist.');
   const klass = await Class.findByIdAndDelete(req.params.id);
   if (!klass) throw new ApiError(404, 'Class not found.');
+  invalidateClassesCache();
   await audit(req, 'class.delete', 'Class', req.params.id, { name: klass.name });
   res.json({ ok: true, message: `${klass.name} deleted.` });
 });
@@ -120,6 +138,7 @@ async function savePlan(klass, plan) {
     .map(plain)
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
   await Class.updateOne({ _id: klass._id }, { $set: { plan: next } });
+  invalidateClassesCache();
   return Class.findById(klass._id);
 }
 

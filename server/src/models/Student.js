@@ -14,15 +14,22 @@ const studentSchema = new mongoose.Schema({
   father: { type: String, required: true, trim: true },
   mother: { type: String, default: '', trim: true },
   phone: { type: String, required: true, trim: true },
+  alternatePhone: { type: String, default: '', trim: true },
   email: { type: String, default: '', lowercase: true, trim: true },
   address: { type: String, default: '' },
   occupation: { type: String, default: '' },
   aadhaarLast4: { type: String, default: '' },
+  childAadhaar: { type: String, default: '', trim: true },
+  fatherAadhaar: { type: String, default: '', trim: true },
+  motherAadhaar: { type: String, default: '', trim: true },
+  birthCertificateSubmitted: { type: Boolean, default: false },
   photo: { type: String, default: '' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
 studentSchema.index({ name: 1 });
 studentSchema.index({ classId: 1, name: 1 });
+studentSchema.index({ phone: 1 });
+studentSchema.index({ alternatePhone: 1 });
 
 export default mongoose.model('Student', studentSchema);

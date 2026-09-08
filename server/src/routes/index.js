@@ -82,8 +82,13 @@ r.post('/students', requirePerm('admit'), [
   body('admissionDate').isISO8601().withMessage('Enter a valid admission date.'),
   body('father').trim().isLength({ min: 3 }).withMessage('Enter the father’s or guardian’s name.'),
   body('phone').matches(/^[6-9]\d{9}$/).withMessage('Enter a 10-digit mobile number starting with 6, 7, 8 or 9.'),
+  body('alternatePhone').optional({ values: 'falsy' }).matches(/^[6-9]\d{9}$/).withMessage('Alternate mobile must be a 10-digit number starting with 6, 7, 8 or 9.'),
   body('email').optional({ values: 'falsy' }).isEmail().withMessage('Enter a valid email address.'),
   body('aadhaarLast4').optional({ values: 'falsy' }).matches(/^\d{4}$/).withMessage('Aadhaar must be exactly 4 digits.'),
+  body('childAadhaar').optional({ values: 'falsy' }).matches(/^\d{12}$/).withMessage('Child Aadhaar must be exactly 12 digits.'),
+  body('fatherAadhaar').optional({ values: 'falsy' }).matches(/^\d{12}$/).withMessage('Father Aadhaar must be exactly 12 digits.'),
+  body('motherAadhaar').optional({ values: 'falsy' }).matches(/^\d{12}$/).withMessage('Mother Aadhaar must be exactly 12 digits.'),
+  body('birthCertificateSubmitted').optional().isBoolean().withMessage('Birth certificate submitted must be true or false.'),
   body('carryForward').optional().isFloat({ min: 0 }).withMessage('Carry forward cannot be negative.'),
 ], V, students.create);
 r.patch('/students/:id', requirePerm('admit'), students.update);

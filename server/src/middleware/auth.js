@@ -9,6 +9,14 @@ export const signToken = (user) => jwt.sign(
   { expiresIn: process.env.JWT_EXPIRES || '7d' },
 );
 
+const userCache = new Map();
+const USER_CACHE_TTL = 30 * 1000; // 30 seconds
+
+export const invalidateUserCache = (id) => {
+  if (id) userCache.delete(String(id));
+  else userCache.clear();
+};
+
 export const protect = asyncHandler(async (req, _res, next) => {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -18,8 +26,17 @@ export const protect = asyncHandler(async (req, _res, next) => {
   try { payload = jwt.verify(token, process.env.JWT_SECRET); }
   catch { throw new ApiError(401, 'Your session has expired. Please sign in again.'); }
 
-  const user = await User.findById(payload.sub);
-  if (!user || !user.active) throw new ApiError(401, 'This account is no longer active.');
+  const now = Date.now();
+  let user = userCache.get(payload.sub);
+  if (!user || now - user._cachedAt > USER_CACHE_TTL) {
+    user = await User.findById(payload.sub);
+    if (!user || !user.active) throw new ApiError(401, 'This account is no longer active.');
+    user._cachedAt = now;
+    userCache.set(payload.sub, user);
+  } else if (!user.active) {
+    userCache.delete(payload.sub);
+    throw new ApiError(401, 'This account is no longer active.');
+  }
 
   req.user = user;
   req.role = roleOf(user.role);

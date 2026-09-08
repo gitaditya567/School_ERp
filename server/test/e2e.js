@@ -215,9 +215,31 @@ async function main() {
   r = await POST('/students', { ...baseStudent, email: 'not-an-email' }, frontdesk);
   check('a malformed email is refused', r.status === 422, r.data);
 
-  r = await POST('/students', baseStudent, frontdesk);
-  check('front desk can admit a student', r.status === 201, r.data);
+  r = await POST('/students', { ...baseStudent, childAadhaar: '12345678901' }, frontdesk);
+  check('Child Aadhaar less than 12 digits is refused', r.status === 422, r.data);
+
+  r = await POST('/students', { ...baseStudent, fatherAadhaar: '1234567890123' }, frontdesk);
+  check('Father Aadhaar more than 12 digits is refused', r.status === 422, r.data);
+
+  r = await POST('/students', { ...baseStudent, alternatePhone: '1234567890' }, frontdesk);
+  check('Alternate mobile not starting 6-9 is refused', r.status === 422, r.data);
+
+  r = await POST('/students', {
+    ...baseStudent,
+    alternatePhone: '9876543210',
+    childAadhaar: '123456789012',
+    fatherAadhaar: '234567890123',
+    motherAadhaar: '345678901234',
+    birthCertificateSubmitted: true,
+  }, frontdesk);
+  check('front desk can admit a student with 12-digit Aadhaar & birth certificate', r.status === 201, r.data);
   const s1 = r.data.student;
+  eq('student child Aadhaar saved', s1.childAadhaar, '123456789012');
+  eq('student father Aadhaar saved', s1.fatherAadhaar, '234567890123');
+  eq('student mother Aadhaar saved', s1.motherAadhaar, '345678901234');
+  eq('student birth certificate flag saved', s1.birthCertificateSubmitted, true);
+  eq('student alternate phone saved', s1.alternatePhone, '9876543210');
+  eq('aadhaarLast4 auto-populated from child Aadhaar', s1.aadhaarLast4, '9012');
   eq('ledger rows created', r.data.ledgerRows, 8);
   check('admission number is generated', /^\w{2}\d{2}0001$/.test(s1.admissionNo), s1.admissionNo);
 
