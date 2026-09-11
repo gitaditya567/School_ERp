@@ -47,7 +47,7 @@ export const ROLES = {
     label: 'Accountant',
     description: 'Collects fee and runs the books. Can waive up to the limit below; anything larger needs the Principal.',
     views: ['dashboard', 'students', 'student', 'collect', 'receipts', 'feemaster', 'concessions', 'daybook', 'reports'],
-    can: { ...none, collect: true, addExpense: true, export: true },
+    can: { ...none, collect: true, addExpense: true, export: true, approveDiscount: true },
     maxDiscount: 1000,
   },
   frontdesk: {

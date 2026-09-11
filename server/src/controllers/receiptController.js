@@ -33,7 +33,7 @@ export const list = asyncHandler(async (req, res) => {
   }, { gross: 0, discount: 0, lateFee: 0, total: 0, count: 0, byMode: {} });
 
   const nextSeq = counter?.seq || 0;
-  res.json({ ok: true, receipts, totals, nextReceiptNo: `${school.receiptPrefix}${String(nextSeq + 1).padStart(4, '0')}` });
+  res.json({ ok: true, receipts, totals, school, nextReceiptNo: `${school.receiptPrefix}${String(nextSeq + 1).padStart(4, '0')}` });
 });
 
 export const get = asyncHandler(async (req, res) => {
@@ -58,7 +58,7 @@ export const cancel = asyncHandler(async (req, res) => {
   if (receipt.cancelled?.at) throw new ApiError(409, 'This receipt is already cancelled.');
 
   await withTransaction(async (session) => {
-    await Promise.all(receipt.lines.map((line) => Ledger.updateOne(
+    await Promise.all(receipt.lines.filter((line) => line.ledger).map((line) => Ledger.updateOne(
       { _id: line.ledger },
       {
         $inc: { paid: -line.net, discount: -line.discount, lateFee: -line.lateFee },

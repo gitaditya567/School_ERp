@@ -11,6 +11,12 @@ const schoolSchema = new mongoose.Schema({
   session: { type: String, default: '' },           // e.g. "2026-27"
   receiptPrefix: { type: String, default: 'RC/' },
   feeWindow: { type: String, default: '1st – 10th of month' },
+  lateFeeStructure: { type: String, enum: ['flat', 'tiered'], default: 'tiered' },
+  lateFeeTier1Days: { type: Number, default: 10 },
+  lateFeeTier1Amount: { type: Number, default: 200 },
+  lateFeeTier2Days: { type: Number, default: 20 },
+  lateFeeTier2Amount: { type: Number, default: 300 },
+  lateFeeTier3Amount: { type: Number, default: 500 },
   lateFeeFrom: { type: Number, default: 20 },       // day of month
   lateFeeAmount: { type: Number, default: 0 },
   readmissionCharge: { type: Number, default: 0 },

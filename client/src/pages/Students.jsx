@@ -2,39 +2,61 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { cachedGet } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { Panel, Chip, Loading, ErrorBox, Empty, Input, Select } from '../components/ui';
+import { useToast } from '../context/ToastContext';
+import { Panel, Chip, Loading, ErrorBox, Empty, Input, Select, Confirm } from '../components/ui';
 import { RS, fmtDate, downloadCSV, initials } from '../lib/format';
 
 export default function Students() {
   const { can, user } = useAuth();
+  const { toast, error: shout } = useToast();
   const nav = useNavigate();
   const [rows, setRows] = useState(null);
   const [classes, setClasses] = useState([]);
   const [error, setError] = useState(null);
   const [f, setF] = useState({ search: '', classId: '', status: '' });
+  const [studentToDelete, setStudentToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     document.title = 'Student Directory';
     cachedGet('/classes').then((d) => setClasses(d.classes)).catch(() => {});
   }, []);
 
+  const load = () => {
+    setError(null);
+    api.get('/students', { params: f }).then((d) => setRows(d.students)).catch(setError);
+  };
+
   useEffect(() => {
     // Only debounce when user is typing, initial load should be immediate
     const delay = f.search ? 220 : 0;
     const id = setTimeout(() => {
-      setError(null);
-      api.get('/students', { params: f }).then((d) => setRows(d.students)).catch(setError);
+      load();
     }, delay);
     return () => clearTimeout(id);
   }, [f.search, f.classId, f.status]);
 
+  const handleDelete = async () => {
+    if (!studentToDelete) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/students/${studentToDelete._id}?force=true`);
+      toast(`${studentToDelete.name} deleted successfully`);
+      setStudentToDelete(null);
+      load();
+    } catch (e) {
+      shout(e);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (error) return <ErrorBox error={error} onRetry={() => setF({ ...f })} />;
 
   const exportCsv = () => downloadCSV('students.csv',
-    ['Adm No', 'Name', 'Class', 'Father', 'Mother', 'Phone', 'Alt Phone', 'Child Aadhaar', 'Birth Cert', 'Net payable', 'Paid', 'Outstanding'],
-    rows.map((s) => [s.admissionNo, s.name, s.classId?.name, s.father, s.mother, s.phone, s.alternatePhone || '',
-      s.childAadhaar || (s.aadhaarLast4 ? `•••• ${s.aadhaarLast4}` : ''), s.birthCertificateSubmitted ? 'Submitted' : 'Pending',
-      s.totals.payable, s.totals.paid, s.totals.outstanding]));
+    ['Adm No', 'Name', 'Class', 'Father', 'Mother', 'Phone', 'Alt Phone', 'Address', 'Birth Cert'],
+    rows.map((s) => [s.admissionNo, s.name, s.classId?.name, s.father, s.mother || '', s.phone, s.alternatePhone || '',
+      s.address || '', s.birthCertificateSubmitted ? 'Submitted' : 'Pending']));
 
   return (
     <Panel bodyless title="Student Directory"
@@ -66,13 +88,11 @@ export default function Students() {
           <table>
             <thead>
               <tr>
-                <th>Adm. No</th><th>Student</th><th>Class</th><th>Father / Guardian</th><th>Contact</th>
-                <th className="t-right">Net payable</th><th className="t-right">Paid</th><th className="t-right">Outstanding</th>
-                <th>Status</th><th />
+                <th>Adm. No</th><th>Student</th><th>Class</th><th>Father / Guardian</th><th>Mother Name</th><th>Contact</th><th>Address</th><th>Birth Certificate</th><th />
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={10}><Empty>No student matches this filter.</Empty></td></tr>}
+              {rows.length === 0 && <tr><td colSpan={9}><Empty>No student matches this filter.</Empty></td></tr>}
               {rows.map((s) => (
                 <tr key={s._id} className="clickable" onClick={() => nav(`/students/${s._id}`)}>
                   <td className="mono tiny" style={{ color: 'var(--text-2)' }}>{s.admissionNo}</td>
@@ -96,28 +116,56 @@ export default function Students() {
                   </td>
                   <td><span className="tag">{s.classId?.name}-{s.section}</span></td>
                   <td>{s.father}</td>
+                  <td>{s.mother || <span className="muted">—</span>}</td>
                   <td className="mono tiny">
                     <div>{s.phone}</div>
                     {s.alternatePhone && <div className="muted" style={{ fontSize: 11 }}>{s.alternatePhone}</div>}
                   </td>
-                  <td className="num">{RS(s.totals.payable)}</td>
-                  <td className="num" style={{ color: 'var(--good)' }}>{RS(s.totals.paid)}</td>
-                  <td className="num" style={{ fontWeight: 700, color: s.totals.outstanding ? 'var(--warn)' : 'var(--text-3)' }}>{RS(s.totals.outstanding)}</td>
-                  <td>
-                    {s.totals.overdue > 0 ? <Chip tone="over">Overdue</Chip>
-                      : s.totals.outstanding > 0 ? <Chip tone="due">Due</Chip> : <Chip tone="paid">Clear</Chip>}
+                  <td style={{ maxWidth: 200, whiteSpace: 'normal', wordBreak: 'break-word', fontSize: 12.5 }} title={s.address}>
+                    {s.address || <span className="muted">—</span>}
                   </td>
-                  <td className="t-right">
-                    {can('collect')
-                      ? <button type="button" className="btn btn-sm btn-primary"
-                        onClick={(e) => { e.stopPropagation(); nav(`/collect?student=${s._id}`); }}>Collect</button>
-                      : <span className="tiny muted">—</span>}
+                  <td>
+                    {s.birthCertificateSubmitted ? (
+                      <Chip tone="paid">Submitted</Chip>
+                    ) : (
+                      <Chip tone="due">Pending</Chip>
+                    )}
+                  </td>
+                  <td className="t-right" onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                      {can('collect') && (
+                        <button type="button" className="btn btn-sm btn-primary"
+                          onClick={() => nav(`/collect?student=${s._id}`)}>Collect</button>
+                      )}
+                      {can('admit') && (
+                        <button type="button" className="btn btn-sm"
+                          style={{ color: 'var(--crit)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                          title="Delete Student"
+                          onClick={() => setStudentToDelete(s)}>Delete</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {studentToDelete && (
+        <Confirm
+          title={`Delete ${studentToDelete.name}?`}
+          danger="Delete Student"
+          loading={deleting}
+          onClose={() => !deleting && setStudentToDelete(null)}
+          onOk={handleDelete}
+        >
+          <p style={{ margin: '0 0 12px', fontSize: 14 }}>
+            Are you sure you want to permanently delete <strong>{studentToDelete.name}</strong> (Admission No: <span className="mono">{studentToDelete.admissionNo}</span>)?
+          </p>
+          <div style={{ padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 8, color: 'var(--crit)', fontSize: 13, lineHeight: 1.5 }}>
+            <strong>Warning:</strong> This will permanently remove the student profile, all fee ledgers, concessions, and associated payment receipts. This action cannot be undone.
+          </div>
+        </Confirm>
       )}
     </Panel>
   );

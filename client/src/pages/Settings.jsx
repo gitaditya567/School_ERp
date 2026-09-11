@@ -146,8 +146,8 @@ export default function Settings() {
         </div>
       </Panel>
 
-      <div className="split">
-        <Panel title="School Profile" actions={<button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={saveSchool}>{saving ? 'Saving...' : 'Save'}</button>}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: 20, alignItems: 'start' }}>
+        <Panel title="School Profile" actions={<button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={saveSchool}>{saving ? 'Saving...' : 'Save Profile'}</button>}>
           <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
             <Field label="School name" style={{ gridColumn: '1/-1' }}><Input value={school.name} onChange={set('name')} /></Field>
             <Field label="Branch"><Input value={school.branch} onChange={set('branch')} /></Field>
@@ -159,18 +159,192 @@ export default function Settings() {
         </Panel>
 
         <Panel title="Receipt & Fee Rules" actions={<button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={saveSchool}>{saving ? 'Saving...' : 'Save'}</button>}>
-          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <Field label="Receipt series prefix"><Input className="input mono" value={school.receiptPrefix} onChange={set('receiptPrefix')} /></Field>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Receipt series prefix"><Input className="input mono" value={school.receiptPrefix || ''} onChange={set('receiptPrefix')} placeholder="e.g. PJ/26-27/" /></Field>
             <Field label="Next receipt no."><Input className="input mono" readOnly value={nextNo} /></Field>
-            <Field label="Fee window"><Input value={school.feeWindow} onChange={set('feeWindow')} /></Field>
-            <Field label="Late fee after (day)"><Input className="input num" value={school.lateFeeFrom} onChange={set('lateFeeFrom')} /></Field>
-            <Field label="Late fee amount"><Input className="input num" value={school.lateFeeAmount} onChange={set('lateFeeAmount')} /></Field>
-            <Field label="Re-admission charge"><Input className="input num" value={school.readmissionCharge} onChange={set('readmissionCharge')} /></Field>
-            <Field label="Full-session advance concession" style={{ gridColumn: '1/-1' }}>
-              <Input className="input num" value={school.advanceConcession} onChange={set('advanceConcession')} />
+            <Field label="Fee window"><Input value={school.feeWindow || ''} onChange={set('feeWindow')} placeholder="e.g. 1st – 10th of month" /></Field>
+            <Field label="Re-admission charge (₹)"><Input className="input num" value={school.readmissionCharge ?? 0} onChange={set('readmissionCharge')} /></Field>
+            <Field label="Full-session advance concession (₹)" style={{ gridColumn: '1/-1' }}>
+              <Input className="input num" value={school.advanceConcession ?? 0} onChange={set('advanceConcession')} />
             </Field>
           </div>
-          <p className="tiny muted" style={{ margin: '12px 0 0' }}>
+
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>Late Fee Calculation Rules</div>
+                <div className="tiny muted" style={{ marginTop: 2 }}>Define late fee charges based on delay days</div>
+              </div>
+              <div className="seg">
+                <button
+                  type="button"
+                  aria-pressed={!school.lateFeeStructure || school.lateFeeStructure === 'tiered'}
+                  onClick={() => setSchool({ ...school, lateFeeStructure: 'tiered' })}
+                >
+                  3 Conditions (Tiered)
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={school.lateFeeStructure === 'flat'}
+                  onClick={() => setSchool({ ...school, lateFeeStructure: 'flat' })}
+                >
+                  Flat Amount
+                </button>
+              </div>
+            </div>
+
+            {(!school.lateFeeStructure || school.lateFeeStructure === 'tiered') ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ borderRadius: 9, border: '1px solid var(--line)', overflow: 'hidden', background: 'var(--surface)' }}>
+                  <div className="tbl-wrap">
+                    <table style={{ margin: 0, width: '100%', minWidth: 380 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--surface-2)' }}>
+                          <th style={{ width: 120, padding: '9px 14px' }}>Condition</th>
+                          <th style={{ padding: '9px 14px' }}>Delay Criteria</th>
+                          <th style={{ width: 140, padding: '9px 14px', textAlign: 'right' }}>Late Fee (₹)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {/* Condition 1 */}
+                        <tr>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span className="chip" style={{ background: 'rgba(224, 70, 128, 0.14)', color: 'var(--brand)', fontWeight: 700 }}>
+                              Condition 1
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Up to</span>
+                              <Input
+                                className="input num"
+                                style={{ width: 70, padding: '5px 8px', fontWeight: 700 }}
+                                value={school.lateFeeTier1Days ?? 10}
+                                onChange={set('lateFeeTier1Days')}
+                                placeholder="10"
+                              />
+                              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>days late</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <span className="mono" style={{ fontWeight: 700, color: 'var(--brand)' }}>₹</span>
+                              <Input
+                                className="input num"
+                                style={{ width: 95, padding: '5px 8px', fontWeight: 700, color: 'var(--brand)' }}
+                                value={school.lateFeeTier1Amount ?? 200}
+                                onChange={set('lateFeeTier1Amount')}
+                                placeholder="200"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Condition 2 */}
+                        <tr>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span className="chip" style={{ background: 'rgba(245, 158, 11, 0.14)', color: 'var(--warn)', fontWeight: 700 }}>
+                              Condition 2
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
+                                {(Number(school.lateFeeTier1Days) || 10) + 1} to
+                              </span>
+                              <Input
+                                className="input num"
+                                style={{ width: 70, padding: '5px 8px', fontWeight: 700 }}
+                                value={school.lateFeeTier2Days ?? 20}
+                                onChange={set('lateFeeTier2Days')}
+                                placeholder="20"
+                              />
+                              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>days late</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <span className="mono" style={{ fontWeight: 700, color: 'var(--warn)' }}>₹</span>
+                              <Input
+                                className="input num"
+                                style={{ width: 95, padding: '5px 8px', fontWeight: 700, color: 'var(--warn)' }}
+                                value={school.lateFeeTier2Amount ?? 300}
+                                onChange={set('lateFeeTier2Amount')}
+                                placeholder="300"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Condition 3 */}
+                        <tr>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span className="chip" style={{ background: 'rgba(239, 68, 68, 0.14)', color: 'var(--crit)', fontWeight: 700 }}>
+                              Condition 3
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>More than</span>
+                              <span className="mono" style={{
+                                fontWeight: 700,
+                                padding: '4px 10px',
+                                background: 'var(--surface-3)',
+                                borderRadius: 6,
+                                border: '1px solid var(--line)',
+                                fontSize: 13
+                              }}>
+                                {school.lateFeeTier2Days || 20}
+                              </span>
+                              <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>days late</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <span className="mono" style={{ fontWeight: 700, color: 'var(--crit)' }}>₹</span>
+                              <Input
+                                className="input num"
+                                style={{ width: 95, padding: '5px 8px', fontWeight: 700, color: 'var(--crit)' }}
+                                value={school.lateFeeTier3Amount ?? 500}
+                                onChange={set('lateFeeTier3Amount')}
+                                placeholder="500"
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Active Rule Summary Card */}
+                <div style={{
+                  padding: '9px 14px',
+                  borderRadius: 8,
+                  background: 'linear-gradient(135deg, rgba(224, 70, 128, 0.08), rgba(224, 70, 128, 0.02))',
+                  border: '1px solid var(--brand-line)',
+                  fontSize: 12,
+                  color: 'var(--text)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexWrap: 'wrap'
+                }}>
+                  <span style={{ fontSize: 15 }}>⚡</span>
+                  <div>
+                    <b>Live Rule:</b> 1 to {school.lateFeeTier1Days || 10}d = <b style={{ color: 'var(--brand)' }}>₹{school.lateFeeTier1Amount ?? 200}</b> · {(Number(school.lateFeeTier1Days) || 10) + 1} to {school.lateFeeTier2Days || 20}d = <b style={{ color: 'var(--warn)' }}>₹{school.lateFeeTier2Amount ?? 300}</b> · &gt;{school.lateFeeTier2Days || 20}d = <b style={{ color: 'var(--crit)' }}>₹{school.lateFeeTier3Amount ?? 500}</b>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', padding: 14, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--line)' }}>
+                <Field label="Late fee after (day of month)"><Input className="input num" value={school.lateFeeFrom ?? 20} onChange={set('lateFeeFrom')} placeholder="20" /></Field>
+                <Field label="Late fee amount (₹)"><Input className="input num" value={school.lateFeeAmount ?? 0} onChange={set('lateFeeAmount')} placeholder="200" /></Field>
+              </div>
+            )}
+          </div>
+
+          <p className="tiny muted" style={{ margin: '14px 0 0' }}>
             Changing the prefix does not renumber past receipts — the sequence continues from {nextNo}.
           </p>
         </Panel>

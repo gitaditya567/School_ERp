@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
 
 const lineSchema = new mongoose.Schema({
-  ledger: { type: mongoose.Schema.Types.ObjectId, ref: 'Ledger', required: true },
+  ledger: { type: mongoose.Schema.Types.ObjectId, ref: 'Ledger', default: null },
+  head: { type: String, default: '' },
   instNo: String,
   month: String,
   gross: Number,
@@ -9,6 +10,7 @@ const lineSchema = new mongoose.Schema({
   reason: { type: String, default: '' },
   lateFee: { type: Number, default: 0 },
   net: Number,
+  balanceRemaining: { type: Number, default: 0 },
 }, { _id: false });
 
 const receiptSchema = new mongoose.Schema({
@@ -17,6 +19,8 @@ const receiptSchema = new mongoose.Schema({
   date: { type: Date, required: true, index: true },
   student: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true, index: true },
   classId: { type: mongoose.Schema.Types.ObjectId, ref: 'Class', required: true },
+  type: { type: String, enum: ['tuition', 'misc'], default: 'tuition', index: true },
+  miscHead: { type: String, default: '' },
   lines: { type: [lineSchema], default: [] },
   gross: Number,
   discount: { type: Number, default: 0 },

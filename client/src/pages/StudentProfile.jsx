@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Panel, Chip, Loading, ErrorBox, Empty, Bar, Drawer, Field, Input } from '../components/ui';
+import { Panel, Chip, Loading, ErrorBox, Empty, Bar, Drawer, Field, Input, Confirm } from '../components/ui';
 import StudentPhotoPicker from '../components/StudentPhotoPicker';
 import ReceiptView from './ReceiptView';
 import { RS, fmtDate, initials, statusOf } from '../lib/format';
@@ -21,6 +21,8 @@ export default function StudentProfile() {
   const [editForm, setEditForm] = useState(null);
   const [editErrors, setEditErrors] = useState({});
   const [savingDetails, setSavingDetails] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => { setError(null); api.get(`/students/${id}`).then(setData).catch(setError); };
   useEffect(() => { document.title = 'Student Ledger'; load(); }, [id]);
@@ -97,6 +99,19 @@ export default function StudentProfile() {
     }
   };
 
+  const deleteStudent = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/students/${s._id}?force=true`);
+      toast(`${s.name} deleted successfully`);
+      nav('/students');
+    } catch (e) {
+      shout(e);
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
   const digits = (k, len) => (e) => setEditForm((p) => ({ ...p, [k]: e.target.value.replace(/\D/g, '').slice(0, len) }));
 
   return (
@@ -136,7 +151,17 @@ export default function StudentProfile() {
           </div>
           <button type="button" className="btn btn-sm" onClick={() => nav('/students')}>← Directory</button>
           {can('admit') && (
-            <button type="button" className="btn btn-sm" onClick={startEdit}>Edit Details</button>
+            <>
+              <button type="button" className="btn btn-sm" onClick={startEdit}>Edit Details</button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{ color: 'var(--crit)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete Student
+              </button>
+            </>
           )}
           {can('collect')
             ? <button type="button" className="btn btn-primary btn-sm" onClick={() => nav(`/collect?student=${s._id}`)}>Collect Fee</button>
@@ -240,7 +265,11 @@ export default function StudentProfile() {
                     <td>
                       <div className="mono tiny" style={{ color: 'var(--brand)', fontWeight: 600 }}>{r.receiptNo}</div>
                       <div className="tiny muted">{fmtDate(r.date)} · {r.mode}</div>
-                      <div className="tiny muted">Inst. {r.lines.map((l) => l.instNo).join(', ')}</div>
+                      {r.type === 'misc' ? (
+                        <div style={{ marginTop: 3 }}><Chip tone="part">Other: {r.miscHead || 'Misc'}</Chip></div>
+                      ) : (
+                        <div className="tiny muted">Inst. {r.lines?.map((l) => l.instNo).join(', ')}</div>
+                      )}
                       {r.cancelled?.at && <Chip tone="over">Cancelled</Chip>}
                     </td>
                     <td className="num" style={{ fontWeight: 700 }}>{RS(r.total)}</td>
@@ -371,6 +400,22 @@ export default function StudentProfile() {
             </div>
           </div>
         </Drawer>
+      )}
+      {confirmDelete && (
+        <Confirm
+          title={`Delete ${s.name}?`}
+          danger="Delete Student"
+          loading={deleting}
+          onClose={() => !deleting && setConfirmDelete(false)}
+          onOk={deleteStudent}
+        >
+          <p style={{ margin: '0 0 12px', fontSize: 14 }}>
+            Are you sure you want to permanently delete <strong>{s.name}</strong> (Admission No: <span className="mono">{s.admissionNo}</span>, Class: {s.classId?.name}-{s.section})?
+          </p>
+          <div style={{ padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 8, color: 'var(--crit)', fontSize: 13, lineHeight: 1.5 }}>
+            <strong>Warning:</strong> This will permanently remove the student profile, all fee ledgers, concessions, and associated payment receipts. This action cannot be undone.
+          </div>
+        </Confirm>
       )}
     </div>
   );

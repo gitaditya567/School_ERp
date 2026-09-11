@@ -130,15 +130,21 @@ export const update = asyncHandler(async (req, res) => {
   res.json({ ok: true, student });
 });
 
-/** DELETE /api/students/:id — only while nothing has been collected. */
+/** DELETE /api/students/:id */
 export const remove = asyncHandler(async (req, res) => {
+  const force = req.query.force === 'true';
   const paid = await Ledger.countDocuments({ student: req.params.id, paid: { $gt: 0 } });
-  if (paid) throw new ApiError(409, 'This student already has receipts. Change the status to “Left” instead of deleting.');
+  if (paid && !force) {
+    throw new ApiError(409, 'This student already has fee receipts. Please confirm deletion or change their status to "Left".');
+  }
   const student = await Student.findByIdAndDelete(req.params.id);
   if (!student) throw new ApiError(404, 'Student not found.');
-  await Ledger.deleteMany({ student: student._id });
-  await Concession.deleteMany({ student: student._id });
+  await Promise.all([
+    Ledger.deleteMany({ student: student._id }),
+    Concession.deleteMany({ student: student._id }),
+    Receipt.deleteMany({ student: student._id }),
+  ]);
   invalidateClassesCache();
-  await audit(req, 'student.delete', 'Student', req.params.id, { admissionNo: student.admissionNo });
+  await audit(req, 'student.delete', 'Student', req.params.id, { admissionNo: student.admissionNo, force });
   res.json({ ok: true, message: `${student.name} removed.` });
 });

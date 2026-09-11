@@ -97,3 +97,25 @@ export const Kpi = ({ label, value, foot, accent, color }) => (
 export const Bar = ({ pct, color = 'var(--good)' }) => (
   <div className="bar"><i style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: color }} /></div>
 );
+
+export const Confirm = ({ title, sub = 'Confirm action', danger = 'Delete', loading = false, onOk, onClose, children }) => (
+  <Drawer title={title} sub={sub} onClose={onClose} footer={(
+    <>
+      <button
+        type="button"
+        className="btn btn-primary"
+        style={{ background: 'var(--crit)', borderColor: 'var(--crit)' }}
+        onClick={onOk}
+        disabled={loading}
+      >
+        {loading ? 'Deleting…' : danger}
+      </button>
+      <div style={{ flex: 1 }} />
+      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={loading}>
+        Cancel
+      </button>
+    </>
+  )}>
+    {children}
+  </Drawer>
+);

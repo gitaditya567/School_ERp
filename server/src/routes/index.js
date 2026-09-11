@@ -9,6 +9,8 @@ import * as master from '../controllers/masterController.js';
 import * as students from '../controllers/studentController.js';
 import * as fee from '../controllers/feeController.js';
 import * as receipts from '../controllers/receiptController.js';
+import * as concessions from '../controllers/concessionController.js';
+import * as concessionReasons from '../controllers/concessionReasonController.js';
 import * as expenses from '../controllers/expenseController.js';
 import * as reports from '../controllers/reportController.js';
 import * as dashboard from '../controllers/dashboardController.js';
@@ -95,18 +97,42 @@ r.patch('/students/:id', requirePerm('admit'), students.update);
 r.delete('/students/:id', requirePerm('admit'), students.remove);
 
 /* -------------------------------- fee ---------------------------------- */
+r.get('/fee/next-receipt-no', requirePerm('collect'), fee.getNextReceiptNo);
 r.get('/fee/pending/:studentId', requirePerm('collect'), fee.pending);
 r.post('/fee/collect', requirePerm('collect'), [
   body('studentId').notEmpty().withMessage('Choose a student.'),
   body('mode').notEmpty().withMessage('Choose a payment mode.'),
   body('lines').isArray({ min: 1 }).withMessage('Select at least one instalment.'),
 ], V, fee.collect);
+r.post('/fee/collect-misc', requirePerm('collect'), [
+  body('studentId').notEmpty().withMessage('Choose a student.'),
+  body('amount').isFloat({ gt: 0 }).withMessage('Enter an amount greater than zero.'),
+  body('head').trim().notEmpty().withMessage('Enter fee purpose / head.'),
+  body('mode').trim().notEmpty().withMessage('Choose a payment mode.'),
+], V, fee.collectMisc);
 
 /* ------------------------------ receipts ------------------------------- */
 r.get('/receipts', requireView('receipts'), receipts.list);
 r.get('/receipts/:id', requireView('receipts'), receipts.get);
 r.post('/receipts/:id/cancel', requirePerm('cancelReceipt'), receipts.cancel);
-r.get('/concessions', requireView('concessions'), receipts.concessions);
+
+/* ----------------------------- concessions ----------------------------- */
+r.get('/concessions', requireView('concessions'), concessions.list);
+r.post('/concessions', requireView('concessions'), [
+  body('studentId').notEmpty().withMessage('Select a student.'),
+  body('amount').isFloat({ gt: 0 }).withMessage('Concession amount must be greater than zero.'),
+  body('reason').trim().notEmpty().withMessage('Enter a concession reason.'),
+], V, concessions.create);
+r.patch('/concessions/:id', requireView('concessions'), concessions.update);
+r.delete('/concessions/:id', requireView('concessions'), concessions.remove);
+
+/* ------------------------ concession reasons --------------------------- */
+r.get('/concession-reasons', requireView('concessions'), concessionReasons.list);
+r.post('/concession-reasons', requireView('concessions'), [
+  body('name').trim().notEmpty().withMessage('Enter a reason name.'),
+], V, concessionReasons.create);
+r.patch('/concession-reasons/:id', requireView('concessions'), concessionReasons.update);
+r.delete('/concession-reasons/:id', requireView('concessions'), concessionReasons.remove);
 
 /* ------------------------------ day book ------------------------------- */
 r.get('/expenses', requireView('daybook'), expenses.dayBook);

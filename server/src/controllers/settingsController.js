@@ -4,7 +4,8 @@ import AuditLog from '../models/AuditLog.js';
 import { asyncHandler, ApiError, audit } from '../utils/helpers.js';
 
 const FIELDS = ['name', 'branch', 'phone', 'email', 'payeeName', 'address', 'session', 'receiptPrefix',
-  'feeWindow', 'lateFeeFrom', 'lateFeeAmount', 'readmissionCharge', 'advanceConcession', 'refundNote', 'strikeOffNote'];
+  'feeWindow', 'lateFeeStructure', 'lateFeeTier1Days', 'lateFeeTier1Amount', 'lateFeeTier2Days', 'lateFeeTier2Amount', 'lateFeeTier3Amount',
+  'lateFeeFrom', 'lateFeeAmount', 'readmissionCharge', 'advanceConcession', 'refundNote', 'strikeOffNote'];
 
 export const get = asyncHandler(async (_req, res) => {
   const school = await School.current();
@@ -12,7 +13,8 @@ export const get = asyncHandler(async (_req, res) => {
   res.json({ ok: true, school, nextReceiptNo: `${school.receiptPrefix}${String(seq + 1).padStart(4, '0')}` });
 });
 
-const NUMERIC_FIELDS = ['lateFeeFrom', 'lateFeeAmount', 'readmissionCharge', 'advanceConcession'];
+const NUMERIC_FIELDS = ['lateFeeFrom', 'lateFeeAmount', 'readmissionCharge', 'advanceConcession',
+  'lateFeeTier1Days', 'lateFeeTier1Amount', 'lateFeeTier2Days', 'lateFeeTier2Amount', 'lateFeeTier3Amount'];
 
 export const update = asyncHandler(async (req, res) => {
   const school = await School.current();

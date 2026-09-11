@@ -40,7 +40,7 @@ export default function ReceiptView({ id, onClose, onChanged }) {
   const { receipt: r, school, amountInWords } = data;
 
   return (
-    <Drawer title={`Receipt ${r.receiptNo}`} sub="Fee & Accounts" onClose={onClose} footer={footer}>
+    <Drawer title={`${r.type === 'misc' ? 'Misc Receipt' : 'Receipt'} ${r.receiptNo}`} sub={r.type === 'misc' ? `Other Fee · ${r.miscHead || 'General'}` : 'Fee & Accounts'} onClose={onClose} footer={footer}>
       {cancelling && (
         <div className="panel" style={{ marginBottom: 16, borderColor: 'var(--crit)' }}>
           <div className="panel-body">
@@ -70,7 +70,9 @@ export default function ReceiptView({ id, onClose, onChanged }) {
             <div style={{ fontSize: 11, color: '#6A6076' }}>{[school.branch, school.phone, school.email].filter(Boolean).join(' · ')}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 9.5, letterSpacing: '.12em', color: '#6A6076', fontWeight: 700 }}>FEE RECEIPT</div>
+            <div style={{ fontSize: 9.5, letterSpacing: '.12em', color: '#6A6076', fontWeight: 700 }}>
+              {r.type === 'misc' ? 'MISCELLANEOUS RECEIPT' : 'FEE RECEIPT'}
+            </div>
             <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: '#B01B5C' }}>{r.receiptNo}</div>
             <div style={{ fontSize: 11, color: '#6A6076' }}>{fmtDate(r.date)}</div>
           </div>
@@ -89,37 +91,78 @@ export default function ReceiptView({ id, onClose, onChanged }) {
           <div><span style={{ color: '#6A6076' }}>Father:</span> <b>{r.student?.father}</b></div>
           <div><span style={{ color: '#6A6076' }}>Session:</span> <b>{school.session || '—'}</b></div>
           <div><span style={{ color: '#6A6076' }}>Mode:</span> <b>{r.mode}</b> <span className="mono" style={{ fontSize: 11, color: '#6A6076' }}>{r.refNo}</span></div>
+          {r.type === 'misc' && (
+            <div style={{ gridColumn: '1 / -1', background: '#F6F2F7', padding: '6px 10px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ color: '#6A6076' }}>Fee Purpose / Head:</span>
+              <b style={{ color: '#B01B5C' }}>{r.miscHead || 'Other Fee'}</b>
+              {r.remarks && <span style={{ color: '#6A6076', fontSize: 11.5 }}>({r.remarks})</span>}
+            </div>
+          )}
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-          <thead>
-            <tr style={{ background: '#F6F2F7' }}>
-              {['Inst.', 'Due month', 'Fee', 'Discount', 'Late fee', 'Amount'].map((h, i) => (
-                <th key={h} style={{ background: 'none', color: '#6A6076', borderBottom: '1px solid #D9D2E0', padding: '7px 8px', textAlign: i > 1 ? 'right' : 'left' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {r.lines.map((l) => (
-              <tr key={l.instNo}>
-                <td style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2' }}><b>{l.instNo}</b></td>
-                <td style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2' }}>
-                  {l.month}{l.reason && <div style={{ fontSize: 10.5, color: '#B01B5C' }}>{l.reason}</div>}
-                </td>
-                <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right' }}>{RS0(l.gross)}</td>
-                <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', color: '#B01B5C' }}>{l.discount ? `−${RS0(l.discount)}` : '—'}</td>
-                <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right' }}>{l.lateFee ? RS0(l.lateFee) : '—'}</td>
-                <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', fontWeight: 700 }}>{RS0(l.net)}</td>
+        {r.type === 'misc' ? (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ background: '#F6F2F7' }}>
+                <th style={{ background: 'none', color: '#6A6076', borderBottom: '1px solid #D9D2E0', padding: '7px 8px', textAlign: 'left' }}>Particulars / Purpose</th>
+                <th style={{ background: 'none', color: '#6A6076', borderBottom: '1px solid #D9D2E0', padding: '7px 8px', textAlign: 'left' }}>Remarks / Note</th>
+                <th style={{ background: 'none', color: '#6A6076', borderBottom: '1px solid #D9D2E0', padding: '7px 8px', textAlign: 'right' }}>Amount</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={5} style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Total received</td>
-              <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700, fontSize: 15, color: '#B01B5C' }}>{RS(r.total)}</td>
-            </tr>
-          </tfoot>
-        </table>
+            </thead>
+            <tbody>
+              {(r.lines || [{ head: r.miscHead, net: r.total, reason: r.remarks }]).map((l, idx) => (
+                <tr key={idx}>
+                  <td style={{ padding: '8px', borderBottom: '1px solid #EEE9F2' }}>
+                    <b style={{ color: '#2C1930' }}>{l.head || r.miscHead || 'Miscellaneous Fee'}</b>
+                  </td>
+                  <td style={{ padding: '8px', borderBottom: '1px solid #EEE9F2', color: '#555' }}>
+                    {l.reason || r.remarks || '—'}
+                  </td>
+                  <td className="mono" style={{ padding: '8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', fontWeight: 700 }}>
+                    {RS0(l.net || r.total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={2} style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Total received</td>
+                <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700, fontSize: 15, color: '#B01B5C' }}>{RS(r.total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ background: '#F6F2F7' }}>
+                {['Inst.', 'Due month', 'Fee', 'Discount', 'Late fee', 'Amount'].map((h, i) => (
+                  <th key={h} style={{ background: 'none', color: '#6A6076', borderBottom: '1px solid #D9D2E0', padding: '7px 8px', textAlign: i > 1 ? 'right' : 'left' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {r.lines.map((l) => (
+                <tr key={l.instNo}>
+                  <td style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2' }}><b>{l.instNo}</b></td>
+                  <td style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2' }}>
+                    {l.month}{l.reason && <div style={{ fontSize: 10.5, color: '#B01B5C' }}>{l.reason}</div>}
+                    {l.balanceRemaining > 0 && <div style={{ fontSize: 10.5, color: '#B3271E', fontWeight: 600 }}>Bal. due: {RS(l.balanceRemaining)} (Partial)</div>}
+                  </td>
+                  <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right' }}>{RS0(l.gross)}</td>
+                  <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', color: '#B01B5C' }}>{l.discount ? `−${RS0(l.discount)}` : '—'}</td>
+                  <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right' }}>{l.lateFee ? RS0(l.lateFee) : '—'}</td>
+                  <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', fontWeight: 700 }}>{RS0(l.net)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={5} style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700 }}>Total received</td>
+                <td style={{ padding: '9px 8px', textAlign: 'right', fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700, fontSize: 15, color: '#B01B5C' }}>{RS(r.total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
 
         <div className="r-line" />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', fontSize: 11, color: '#6A6076' }}>
