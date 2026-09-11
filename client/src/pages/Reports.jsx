@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { Panel, Chip, Loading, ErrorBox, Empty, Input, Select } from '../components/ui';
 import { RS, fmtDate, monthName, downloadCSV } from '../lib/format';
 
+import PendingFeeSlipModal, { printBulkSlips } from '../components/PendingFeeSlipModal';
+
 const REPORTS = [
   { key: 'monthly-due', title: 'Monthly Due Report', desc: 'Which student owes how much, in a chosen month' },
   { key: 'daily-collection', title: 'Daily Collection', desc: 'Day-wise collection with payment-mode breakup' },
@@ -19,6 +21,7 @@ export default function Reports() {
   const [f, setF] = useState({ month: new Date().toISOString().slice(0, 7), classId: '', from: '', to: '' });
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [activeSlip, setActiveSlip] = useState(null);
 
   useEffect(() => {
     document.title = 'Reports';
@@ -89,6 +92,17 @@ export default function Reports() {
             {can('export') && table?.rows?.length > 0 && (
               <button type="button" className="btn btn-sm" onClick={() => downloadCSV(`${key}.csv`, table.head, table.rows)}>Export CSV</button>
             )}
+            {key === 'monthly-due' && data?.rows?.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+                onClick={() => printBulkSlips({ rows: data.rows, school: data.school })}
+                title="Bulk print pending fee notices for all students in this report"
+              >
+                <span>🖨️</span> Print All Slips ({data.rows.length})
+              </button>
+            )}
             <button type="button" className="btn btn-sm" onClick={() => window.print()}>Print</button>
           </>
         )}>
@@ -102,9 +116,14 @@ export default function Reports() {
         {error ? <ErrorBox error={error} /> : !data ? <Loading /> : (
           <div className="tbl-wrap">
             <table>
-              <thead><tr>{table.head.map((h, i) => <th key={h} className={table.num[i] ? 't-right' : ''}>{h}</th>)}</tr></thead>
+              <thead>
+                <tr>
+                  {table.head.map((h, i) => <th key={h} className={table.num[i] ? 't-right' : ''}>{h}</th>)}
+                  {key === 'monthly-due' && <th className="t-right">Notice Slip</th>}
+                </tr>
+              </thead>
               <tbody>
-                {table.rows.length === 0 && <tr><td colSpan={table.head.length}><Empty>No data for this filter.</Empty></td></tr>}
+                {table.rows.length === 0 && <tr><td colSpan={table.head.length + (key === 'monthly-due' ? 1 : 0)}><Empty>No data for this filter.</Empty></td></tr>}
                 {table.rows.map((row, i) => (
                   // eslint-disable-next-line react/no-array-index-key
                   <tr key={i} className={table.ids[i] ? 'clickable' : ''} onClick={() => table.ids[i] && nav(`/students/${table.ids[i]}`)}>
@@ -114,6 +133,28 @@ export default function Reports() {
                         {table.num[j] && !(table.plain || []).includes(j) ? RS(cell) : cell}
                       </td>
                     ))}
+                    {key === 'monthly-due' && (
+                      <td className="t-right" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{
+                            padding: '3px 8px',
+                            fontSize: 11.5,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            borderColor: 'var(--brand)',
+                            color: 'var(--brand)',
+                            fontWeight: 600,
+                          }}
+                          onClick={() => setActiveSlip(data.rows[i])}
+                          title="View and print pending fee information slip"
+                        >
+                          <span>📄</span> View Slip
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -122,6 +163,7 @@ export default function Reports() {
                   <tr style={{ background: 'var(--surface-2)' }}>
                     <td colSpan={table.head.length - 1} style={{ fontWeight: 700 }}>{table.footLabel}</td>
                     <td className="num" style={{ fontWeight: 700, fontSize: 15 }}>{RS(data.total)}</td>
+                    {key === 'monthly-due' && <td />}
                   </tr>
                 </tfoot>
               )}
@@ -129,6 +171,14 @@ export default function Reports() {
           </div>
         )}
       </Panel>
+
+      {activeSlip && (
+        <PendingFeeSlipModal
+          row={activeSlip}
+          school={data?.school}
+          onClose={() => setActiveSlip(null)}
+        />
+      )}
 
       <Panel title="All reports">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 10 }}>

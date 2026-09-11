@@ -12,7 +12,7 @@ export const monthlyDue = asyncHandler(async (req, res) => {
     ...scopeFilter(req),
     dueDate: { $gte: startOfMonth(month), $lte: endOfMonth(month) },
   })
-    .populate('student', 'name admissionNo father phone')
+    .populate('student', 'name admissionNo father phone section gender')
     .populate('classId', 'name')
     .sort('dueDate');
 
@@ -21,11 +21,21 @@ export const monthlyDue = asyncHandler(async (req, res) => {
   res.json({
     ok: true,
     month,
+    school,
     note: `${school.feeWindow} fee window${school.lateFeeAmount ? ` · ${school.lateFeeAmount} late fee after the ${school.lateFeeFrom}th` : ''}`,
     rows: due.map((r) => ({
-      admissionNo: r.student?.admissionNo, student: r.student?.name, className: r.classId?.name,
-      father: r.student?.father, phone: r.student?.phone, instNo: r.instNo, dueDate: r.dueDate,
-      balance: balanceOf(r), studentId: r.student?._id,
+      admissionNo: r.student?.admissionNo,
+      student: r.student?.name,
+      gender: r.student?.gender || 'M',
+      className: r.classId?.name,
+      section: r.student?.section || 'A',
+      father: r.student?.father,
+      phone: r.student?.phone,
+      instNo: r.instNo,
+      month: r.month,
+      dueDate: r.dueDate,
+      balance: balanceOf(r),
+      studentId: r.student?._id,
     })),
     total: due.reduce((s, r) => s + balanceOf(r), 0),
   });
