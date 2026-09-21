@@ -23,6 +23,12 @@ const schoolSchema = new mongoose.Schema({
   advanceConcession: { type: Number, default: 0 },
   refundNote: { type: String, default: 'Fee once deposited is non-refundable.' },
   strikeOffNote: { type: String, default: '' },
+  // Admission number sequence configuration
+  admissionPrefix: { type: String, default: '' },
+  admissionYearFormat: { type: String, enum: ['none', 'YY', 'YYYY', 'session'], default: 'YY' },
+  admissionSeparator: { type: String, default: '' },
+  admissionPadding: { type: Number, default: 4 },
+  admissionSeqMode: { type: String, enum: ['yearly', 'continuous'], default: 'yearly' },
 }, { timestamps: true });
 
 let cachedSchool = null;

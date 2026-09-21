@@ -5,13 +5,15 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Panel, Chip, Loading, ErrorBox, Empty, Bar, Drawer, Field, Input, Confirm } from '../components/ui';
 import StudentPhotoPicker from '../components/StudentPhotoPicker';
+import StudentDocumentModal from '../components/StudentDocumentModal';
 import ReceiptView from './ReceiptView';
 import { RS, fmtDate, initials, statusOf } from '../lib/format';
+import { printAdmissionSlip } from '../lib/printSlip';
 
 export default function StudentProfile() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { can } = useAuth();
+  const { can, school } = useAuth();
   const { toast, error: shout } = useToast();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -23,6 +25,7 @@ export default function StudentProfile() {
   const [savingDetails, setSavingDetails] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showDocModal, setShowDocModal] = useState(false);
 
   const load = () => { setError(null); api.get(`/students/${id}`).then(setData).catch(setError); };
   useEffect(() => { document.title = 'Student Ledger'; load(); }, [id]);
@@ -57,6 +60,8 @@ export default function StudentProfile() {
       fatherAadhaar: s.fatherAadhaar || '',
       motherAadhaar: s.motherAadhaar || '',
       birthCertificateSubmitted: Boolean(s.birthCertificateSubmitted),
+      fatherAadhaarSubmitted: Boolean(s.fatherAadhaarSubmitted),
+      motherAadhaarSubmitted: Boolean(s.motherAadhaarSubmitted),
     });
     setEditErrors({});
     setEditingDetails(true);
@@ -150,6 +155,15 @@ export default function StudentProfile() {
             )}
           </div>
           <button type="button" className="btn btn-sm" onClick={() => nav('/students')}>← Directory</button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => printAdmissionSlip({ student: s, school })}
+            title="Print official admission confirmation slip"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          >
+            <span>📄</span> Print Admission Slip
+          </button>
           {can('admit') && (
             <>
               <button type="button" className="btn btn-sm" onClick={startEdit}>Edit Details</button>
@@ -190,13 +204,28 @@ export default function StudentProfile() {
             <dd className="mono">
               {s.childAadhaar || (s.aadhaarLast4 ? `•••• ${s.aadhaarLast4}` : '—')}
             </dd>
-            <dt>Birth Certificate</dt>
+            <dt>Documents</dt>
             <dd>
-              {s.birthCertificateSubmitted ? (
-                <Chip tone="paid">Submitted</Chip>
-              ) : (
-                <Chip tone="up">Not submitted</Chip>
-              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <span title="Child Birth Certificate">
+                  {s.birthCertificateSubmitted ? <Chip tone="paid">Birth Cert ✓</Chip> : <Chip tone="due">Birth Cert ✗</Chip>}
+                </span>
+                <span title="Father Aadhaar">
+                  {s.fatherAadhaarSubmitted ? <Chip tone="paid">Father Aadhaar ✓</Chip> : <Chip tone="due">Father Aadhaar ✗</Chip>}
+                </span>
+                <span title="Mother Aadhaar">
+                  {s.motherAadhaarSubmitted ? <Chip tone="paid">Mother Aadhaar ✓</Chip> : <Chip tone="due">Mother Aadhaar ✗</Chip>}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  style={{ padding: '2px 8px', fontSize: 11, cursor: 'pointer', borderColor: 'var(--brand-line)', color: 'var(--brand)' }}
+                  onClick={() => setShowDocModal(true)}
+                  title="Upload or view student & parent documents"
+                >
+                  📁 Manage / Upload
+                </button>
+              </div>
             </dd>
             <dt>Address</dt><dd>{s.address || '—'}</dd>
           </dl>
@@ -358,24 +387,36 @@ export default function StudentProfile() {
             </div>
 
             <div style={{ paddingTop: 12, borderTop: '1px dashed var(--line)' }}>
-              <div className="lbl" style={{ marginBottom: 8, color: 'var(--brand)', fontWeight: 700 }}>Child Identification & Documents</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div className="lbl" style={{ margin: 0, color: 'var(--brand)', fontWeight: 700 }}>Child Identification & Documents</div>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  style={{ fontSize: 11, padding: '3px 8px' }}
+                  onClick={() => setShowDocModal(true)}
+                >
+                  📁 Upload / View Files
+                </button>
+              </div>
               <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', alignItems: 'center', gap: 14 }}>
                 <Field label={`Child Aadhaar (12 digits)${editForm.childAadhaar ? ` · ${editForm.childAadhaar.length}/12` : ''}`} error={editErrors.childAadhaar}>
                   <Input className="input mono" inputMode="numeric" maxLength={12} value={editForm.childAadhaar}
                     onChange={digits('childAadhaar', 12)} placeholder="12-digit Aadhaar" error={editErrors.childAadhaar} />
                 </Field>
+              </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10, marginTop: 10 }}>
+                {/* Birth Certificate */}
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 12,
-                    padding: '12px 14px',
+                    gap: 10,
+                    padding: '10px 12px',
                     borderRadius: 'var(--r)',
                     background: editForm.birthCertificateSubmitted ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2)',
                     border: `1px solid ${editForm.birthCertificateSubmitted ? '#10b981' : 'var(--line)'}`,
-                    cursor: 'pointer',
-                    marginTop: 4
+                    cursor: 'pointer'
                   }}
                   onClick={() => setEditForm((p) => ({ ...p, birthCertificateSubmitted: !p.birthCertificateSubmitted }))}
                 >
@@ -384,15 +425,79 @@ export default function StudentProfile() {
                     id="editBirthCert"
                     checked={editForm.birthCertificateSubmitted}
                     onChange={(e) => setEditForm((p) => ({ ...p, birthCertificateSubmitted: e.target.checked }))}
-                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#10b981' }}
+                    style={{ width: 17, height: 17, cursor: 'pointer', accentColor: '#10b981' }}
                     onClick={(e) => e.stopPropagation()}
                   />
-                  <label htmlFor="editBirthCert" style={{ cursor: 'pointer', flex: 1, margin: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: editForm.birthCertificateSubmitted ? '#10b981' : 'var(--text)' }}>
-                      Child Birth Certificate Submitted
+                  <label htmlFor="editBirthCert" style={{ cursor: 'pointer', flex: 1, margin: 0, fontSize: 12.5 }}>
+                    <div style={{ fontWeight: 600, color: editForm.birthCertificateSubmitted ? '#10b981' : 'var(--text)' }}>
+                      Birth Certificate
                     </div>
-                    <div className="tiny muted" style={{ fontSize: 11 }}>
-                      Check if birth certificate is verified and collected
+                    <div className="tiny muted" style={{ fontSize: 10.5 }}>
+                      Child birth certificate
+                    </div>
+                  </label>
+                </div>
+
+                {/* Father Aadhaar */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    borderRadius: 'var(--r)',
+                    background: editForm.fatherAadhaarSubmitted ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2)',
+                    border: `1px solid ${editForm.fatherAadhaarSubmitted ? '#10b981' : 'var(--line)'}`,
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => setEditForm((p) => ({ ...p, fatherAadhaarSubmitted: !p.fatherAadhaarSubmitted }))}
+                >
+                  <input
+                    type="checkbox"
+                    id="editFatherAadhaar"
+                    checked={editForm.fatherAadhaarSubmitted}
+                    onChange={(e) => setEditForm((p) => ({ ...p, fatherAadhaarSubmitted: e.target.checked }))}
+                    style={{ width: 17, height: 17, cursor: 'pointer', accentColor: '#10b981' }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <label htmlFor="editFatherAadhaar" style={{ cursor: 'pointer', flex: 1, margin: 0, fontSize: 12.5 }}>
+                    <div style={{ fontWeight: 600, color: editForm.fatherAadhaarSubmitted ? '#10b981' : 'var(--text)' }}>
+                      Father Aadhaar
+                    </div>
+                    <div className="tiny muted" style={{ fontSize: 10.5 }}>
+                      Father Aadhaar card
+                    </div>
+                  </label>
+                </div>
+
+                {/* Mother Aadhaar */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    borderRadius: 'var(--r)',
+                    background: editForm.motherAadhaarSubmitted ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2)',
+                    border: `1px solid ${editForm.motherAadhaarSubmitted ? '#10b981' : 'var(--line)'}`,
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => setEditForm((p) => ({ ...p, motherAadhaarSubmitted: !p.motherAadhaarSubmitted }))}
+                >
+                  <input
+                    type="checkbox"
+                    id="editMotherAadhaar"
+                    checked={editForm.motherAadhaarSubmitted}
+                    onChange={(e) => setEditForm((p) => ({ ...p, motherAadhaarSubmitted: e.target.checked }))}
+                    style={{ width: 17, height: 17, cursor: 'pointer', accentColor: '#10b981' }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <label htmlFor="editMotherAadhaar" style={{ cursor: 'pointer', flex: 1, margin: 0, fontSize: 12.5 }}>
+                    <div style={{ fontWeight: 600, color: editForm.motherAadhaarSubmitted ? '#10b981' : 'var(--text)' }}>
+                      Mother Aadhaar
+                    </div>
+                    <div className="tiny muted" style={{ fontSize: 10.5 }}>
+                      Mother Aadhaar card
                     </div>
                   </label>
                 </div>
@@ -416,6 +521,16 @@ export default function StudentProfile() {
             <strong>Warning:</strong> This will permanently remove the student profile, all fee ledgers, concessions, and associated payment receipts. This action cannot be undone.
           </div>
         </Confirm>
+      )}
+      {showDocModal && (
+        <StudentDocumentModal
+          student={s}
+          onClose={() => setShowDocModal(false)}
+          onSaved={() => {
+            setShowDocModal(false);
+            load();
+          }}
+        />
       )}
     </div>
   );

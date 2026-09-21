@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Drawer } from './ui';
+import { printSlipHTML } from '../lib/printSlip';
 
 export function getSlipStyles() {
   return `
@@ -239,29 +240,7 @@ export function printSlipDirect({ row, school, note }) {
     </html>
   `;
 
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow.document;
-  doc.open();
-  doc.write(content);
-  doc.close();
-
-  iframe.contentWindow.focus();
-  setTimeout(() => {
-    iframe.contentWindow.print();
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
-      }
-    }, 2000);
-  }, 250);
+  printSlipHTML(content, `Pending_Fee_${row.student || 'Slip'}`);
 }
 
 export function printBulkSlips({ rows, school, note }) {
@@ -292,29 +271,7 @@ export function printBulkSlips({ rows, school, note }) {
     </html>
   `;
 
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow.document;
-  doc.open();
-  doc.write(content);
-  doc.close();
-
-  iframe.contentWindow.focus();
-  setTimeout(() => {
-    iframe.contentWindow.print();
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
-      }
-    }, 2000);
-  }, 250);
+  printSlipHTML(content, `Pending_Fee_Slips_${rows.length}`);
 }
 
 export default function PendingFeeSlipModal({ row, school, onClose }) {
@@ -367,7 +324,7 @@ export default function PendingFeeSlipModal({ row, school, onClose }) {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Custom Note Input */}
-        <div style={{ background: 'var(--surface-2)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--line)' }}>
+        <div className="no-print" style={{ background: 'var(--surface-2)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--line)' }}>
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', display: 'block', marginBottom: 4 }}>
             Custom Note (Optional):
           </label>

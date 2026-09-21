@@ -11,6 +11,8 @@ export default function Settings() {
   const { toast, error: shout } = useToast();
   const [school, setSchool] = useState(null);
   const [nextNo, setNextNo] = useState('');
+  const [nextAdmNo, setNextAdmNo] = useState('');
+  const [admSeqNum, setAdmSeqNum] = useState('1');
   const [users, setUsers] = useState([]);
   const [matrix, setMatrix] = useState(null);
   const [classes, setClasses] = useState([]);
@@ -24,7 +26,11 @@ export default function Settings() {
     setError(null);
     try {
       const [s, m] = await Promise.all([api.get('/settings'), api.get('/roles')]);
-      setSchool(s.school); setNextNo(s.nextReceiptNo); setMatrix(m);
+      setSchool(s.school);
+      setNextNo(s.nextReceiptNo);
+      setNextAdmNo(s.nextAdmissionNo || '');
+      setAdmSeqNum(s.nextAdmissionSeq !== undefined ? String(s.nextAdmissionSeq) : '1');
+      setMatrix(m);
       if (can('manageUsers')) {
         const [u, c] = await Promise.all([api.get('/users'), api.get('/classes')]);
         setUsers(u.users); setClasses(c.classes);
@@ -43,8 +49,53 @@ export default function Settings() {
     try {
       const r = await api.patch('/settings', school);
       setSchool(r.school);
+      if (r.nextAdmissionNo) setNextAdmNo(r.nextAdmissionNo);
+      if (r.nextAdmissionSeq) setAdmSeqNum(String(r.nextAdmissionSeq));
       await reload();
       toast('School settings saved successfully!');
+    } catch (e) {
+      shout(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const previewAdmissionNo = () => {
+    const prefix = (school.admissionPrefix !== undefined && school.admissionPrefix !== null && school.admissionPrefix !== '')
+      ? school.admissionPrefix.trim()
+      : (school.name || 'SCH').replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase();
+
+    const d = new Date();
+    const fullYear = d.getFullYear().toString();
+    const shortYear = fullYear.slice(-2);
+
+    let yearPart = '';
+    const yearFormat = school.admissionYearFormat || 'YY';
+    if (yearFormat === 'YY') yearPart = shortYear;
+    else if (yearFormat === 'YYYY') yearPart = fullYear;
+    else if (yearFormat === 'session') yearPart = school.session || `${fullYear}-${(Number(shortYear) + 1).toString().padStart(2, '0')}`;
+
+    const padLen = school.admissionPadding !== undefined ? Number(school.admissionPadding) : 4;
+    const seq = parseInt(admSeqNum, 10) || 1;
+    const numPart = padLen > 0 ? String(seq).padStart(padLen, '0') : String(seq);
+
+    const sep = school.admissionSeparator || '';
+    if (sep) return [prefix, yearPart, numPart].filter(Boolean).join(sep);
+    return `${prefix}${yearPart}${numPart}`;
+  };
+
+  const saveAdmissionSettings = async () => {
+    setSaving(true);
+    try {
+      const r = await api.patch('/settings', {
+        ...school,
+        admissionNextSeq: admSeqNum,
+      });
+      setSchool(r.school);
+      setNextAdmNo(r.nextAdmissionNo);
+      setAdmSeqNum(r.nextAdmissionSeq !== undefined ? String(r.nextAdmissionSeq) : '1');
+      await reload();
+      toast('Admission number sequence settings saved successfully!');
     } catch (e) {
       shout(e);
     } finally {
@@ -156,6 +207,130 @@ export default function Settings() {
             <Field label="Cheque / DD payee name"><Input value={school.payeeName} onChange={set('payeeName')} /></Field>
             <Field label="Current session"><Input value={school.session} onChange={set('session')} placeholder="2026-27" /></Field>
           </div>
+        </Panel>
+
+        <Panel
+          title="Admission Number Sequence"
+          sub="Define the pattern, prefix and sequence used to generate student admission numbers"
+          actions={
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              disabled={saving}
+              onClick={saveAdmissionSettings}
+            >
+              {saving ? 'Saving...' : 'Save Sequence'}
+            </button>
+          }
+        >
+          {/* Live Preview Card */}
+          <div style={{
+            background: 'linear-gradient(135deg, var(--surface-2) 0%, var(--surface-3) 100%)',
+            border: '1px solid var(--line)',
+            borderRadius: 10,
+            padding: '12px 16px',
+            marginBottom: 16,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12
+          }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                Live Format Preview
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
+                Next student admitted will receive:
+              </div>
+            </div>
+            <div style={{
+              fontSize: 19,
+              fontFamily: '"IBM Plex Mono", monospace',
+              fontWeight: 800,
+              color: 'var(--brand)',
+              background: 'var(--surface)',
+              padding: '6px 14px',
+              borderRadius: 8,
+              border: '1.5px solid var(--brand-line, var(--line))',
+              letterSpacing: '0.04em'
+            }}>
+              {previewAdmissionNo()}
+            </div>
+          </div>
+
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Prefix (School Code / Letters)">
+              <Input
+                className="input mono"
+                value={school.admissionPrefix ?? ''}
+                onChange={set('admissionPrefix')}
+                placeholder={`Default: ${(school.name || 'SCH').replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase()}`}
+              />
+            </Field>
+
+            <Field label="Year / Session in Number">
+              <Select
+                value={school.admissionYearFormat || 'YY'}
+                onChange={set('admissionYearFormat')}
+              >
+                <option value="YY">2-digit Year (e.g. {new Date().getFullYear().toString().slice(-2)})</option>
+                <option value="YYYY">4-digit Year (e.g. {new Date().getFullYear()})</option>
+                <option value="session">Academic Session (e.g. {school.session || '2026-27'})</option>
+                <option value="none">None (No year in number)</option>
+              </Select>
+            </Field>
+
+            <Field label="Separator Character">
+              <Select
+                value={school.admissionSeparator || ''}
+                onChange={set('admissionSeparator')}
+              >
+                <option value="">None (e.g. PJ260001)</option>
+                <option value="/">Slash / (e.g. PJ/26/0001)</option>
+                <option value="-">Hyphen - (e.g. PJ-26-0001)</option>
+                <option value=".">Dot . (e.g. PJ.26.0001)</option>
+              </Select>
+            </Field>
+
+            <Field label="Zero Padding (Digits)">
+              <Select
+                value={school.admissionPadding !== undefined ? school.admissionPadding : 4}
+                onChange={(e) => setSchool({ ...school, admissionPadding: Number(e.target.value) })}
+              >
+                <option value={4}>4 digits (e.g. 0001)</option>
+                <option value={3}>3 digits (e.g. 001)</option>
+                <option value={5}>5 digits (e.g. 00001)</option>
+                <option value={6}>6 digits (e.g. 000001)</option>
+                <option value={0}>No leading zeros (e.g. 1, 42)</option>
+              </Select>
+            </Field>
+
+            <Field label="Next Sequence Number (Starting #)">
+              <Input
+                type="number"
+                min="1"
+                className="input mono"
+                value={admSeqNum}
+                onChange={(e) => setAdmSeqNum(e.target.value.replace(/\D/g, ''))}
+                placeholder="1"
+              />
+            </Field>
+
+            <Field label="Sequence Mode">
+              <Select
+                value={school.admissionSeqMode || 'yearly'}
+                onChange={set('admissionSeqMode')}
+              >
+                <option value="yearly">Reset Yearly (Per Academic Year)</option>
+                <option value="continuous">Continuous (Continuous counter across years)</option>
+              </Select>
+            </Field>
+          </div>
+
+          <p className="tiny muted" style={{ marginTop: 14, lineHeight: 1.5 }}>
+            💡 <strong>Tip:</strong> If you want to start or resume from a specific number (e.g. 101 or from an offline register), update <em>Next Sequence Number</em> and click Save.
+          </p>
         </Panel>
 
         <Panel title="Receipt & Fee Rules" actions={<button type="button" className="btn btn-sm btn-primary" disabled={saving} onClick={saveSchool}>{saving ? 'Saving...' : 'Save'}</button>}>

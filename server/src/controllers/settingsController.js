@@ -1,20 +1,34 @@
 import School from '../models/School.js';
 import Counter from '../models/Counter.js';
 import AuditLog from '../models/AuditLog.js';
-import { asyncHandler, ApiError, audit } from '../utils/helpers.js';
+import { asyncHandler, ApiError, audit, formatAdmissionNo, getAdmissionCounterKey } from '../utils/helpers.js';
 
 const FIELDS = ['name', 'branch', 'phone', 'email', 'payeeName', 'address', 'session', 'receiptPrefix',
   'feeWindow', 'lateFeeStructure', 'lateFeeTier1Days', 'lateFeeTier1Amount', 'lateFeeTier2Days', 'lateFeeTier2Amount', 'lateFeeTier3Amount',
-  'lateFeeFrom', 'lateFeeAmount', 'readmissionCharge', 'advanceConcession', 'refundNote', 'strikeOffNote'];
+  'lateFeeFrom', 'lateFeeAmount', 'readmissionCharge', 'advanceConcession', 'refundNote', 'strikeOffNote',
+  'admissionPrefix', 'admissionYearFormat', 'admissionSeparator', 'admissionPadding', 'admissionSeqMode'];
 
 export const get = asyncHandler(async (_req, res) => {
   const school = await School.current();
   const seq = (await Counter.findOne({ key: 'receipt' }))?.seq || 0;
-  res.json({ ok: true, school, nextReceiptNo: `${school.receiptPrefix}${String(seq + 1).padStart(4, '0')}` });
+
+  const admKey = getAdmissionCounterKey(school);
+  const admCounter = (await Counter.findOne({ key: admKey }))?.seq || 0;
+  const nextAdmissionSeq = admCounter + 1;
+  const nextAdmissionNo = formatAdmissionNo(school, nextAdmissionSeq);
+
+  res.json({
+    ok: true,
+    school,
+    nextReceiptNo: `${school.receiptPrefix}${String(seq + 1).padStart(4, '0')}`,
+    nextAdmissionNo,
+    nextAdmissionSeq,
+  });
 });
 
 const NUMERIC_FIELDS = ['lateFeeFrom', 'lateFeeAmount', 'readmissionCharge', 'advanceConcession',
-  'lateFeeTier1Days', 'lateFeeTier1Amount', 'lateFeeTier2Days', 'lateFeeTier2Amount', 'lateFeeTier3Amount'];
+  'lateFeeTier1Days', 'lateFeeTier1Amount', 'lateFeeTier2Days', 'lateFeeTier2Amount', 'lateFeeTier3Amount',
+  'admissionPadding'];
 
 export const update = asyncHandler(async (req, res) => {
   const school = await School.current();
@@ -29,8 +43,24 @@ export const update = asyncHandler(async (req, res) => {
   });
   await school.save();
   School.invalidateCache();
+
+  if (req.body.admissionNextSeq !== undefined && req.body.admissionNextSeq !== '') {
+    const nextSeqNum = Math.max(1, parseInt(req.body.admissionNextSeq, 10) || 1);
+    const admKey = getAdmissionCounterKey(school);
+    await Counter.findOneAndUpdate(
+      { key: admKey },
+      { $set: { seq: nextSeqNum - 1 } },
+      { upsert: true, new: true },
+    );
+  }
+
+  const admKey = getAdmissionCounterKey(school);
+  const admCounter = (await Counter.findOne({ key: admKey }))?.seq || 0;
+  const nextAdmissionSeq = admCounter + 1;
+  const nextAdmissionNo = formatAdmissionNo(school, nextAdmissionSeq);
+
   await audit(req, 'settings.update', 'School', school._id);
-  res.json({ ok: true, school });
+  res.json({ ok: true, school, nextAdmissionNo, nextAdmissionSeq });
 });
 
 /** PUT /api/settings/logo — body { logo: "data:image/png;base64,…" } or { logo: "" } to clear. */

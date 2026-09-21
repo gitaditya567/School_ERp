@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Drawer, Loading, Field, Input } from '../components/ui';
 import { useToast } from '../context/ToastContext';
 import { RS, RS0, fmtDate } from '../lib/format';
+import { printReceiptSlip } from '../lib/printSlip';
 
 export default function ReceiptView({ id, onClose, onChanged }) {
   const { can } = useAuth();
@@ -24,9 +25,34 @@ export default function ReceiptView({ id, onClose, onChanged }) {
     } catch (e) { shout(e); }
   };
 
+  const handlePrint = (duplicate = false) => {
+    if (!data) return;
+    printReceiptSlip({
+      receipt: data.receipt,
+      school: data.school,
+      amountInWords: data.amountInWords,
+      duplicate,
+    });
+  };
+
   const footer = (
     <>
-      <button type="button" className="btn btn-primary" onClick={() => window.print()}>Print / PDF</button>
+      <button
+        type="button"
+        className="btn btn-primary"
+        onClick={() => handlePrint(false)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+      >
+        <span>🖨️</span> Print Slip / PDF
+      </button>
+      <button
+        type="button"
+        className="btn btn-sm"
+        onClick={() => handlePrint(true)}
+        title="Print 2 copies on one sheet: Student Copy + Office Copy"
+      >
+        2 Copies (Student + Office)
+      </button>
       {can('cancelReceipt') && !data?.receipt?.cancelled?.at && (
         <button type="button" className="btn" style={{ color: 'var(--crit)', borderColor: 'var(--crit)' }}
           onClick={() => setCancelling(true)}>Cancel receipt</button>
@@ -42,7 +68,7 @@ export default function ReceiptView({ id, onClose, onChanged }) {
   return (
     <Drawer title={`${r.type === 'misc' ? 'Misc Receipt' : 'Receipt'} ${r.receiptNo}`} sub={r.type === 'misc' ? `Other Fee · ${r.miscHead || 'General'}` : 'Fee & Accounts'} onClose={onClose} footer={footer}>
       {cancelling && (
-        <div className="panel" style={{ marginBottom: 16, borderColor: 'var(--crit)' }}>
+        <div className="panel no-print" style={{ marginBottom: 16, borderColor: 'var(--crit)' }}>
           <div className="panel-body">
             <Field label="Why is this receipt being cancelled?">
               <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Cheque returned unpaid" />

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Panel, Chip, Loading, ErrorBox, Empty, Input, Select, Confirm } from '../components/ui';
 import { RS, fmtDate, downloadCSV, initials } from '../lib/format';
+import StudentDocumentModal from '../components/StudentDocumentModal';
 
 export default function Students() {
   const { can, user } = useAuth();
@@ -16,6 +17,7 @@ export default function Students() {
   const [f, setF] = useState({ search: '', classId: '', status: '' });
   const [studentToDelete, setStudentToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedDocStudent, setSelectedDocStudent] = useState(null);
 
   useEffect(() => {
     document.title = 'Student Directory';
@@ -54,9 +56,17 @@ export default function Students() {
   if (error) return <ErrorBox error={error} onRetry={() => setF({ ...f })} />;
 
   const exportCsv = () => downloadCSV('students.csv',
-    ['Adm No', 'Name', 'Class', 'Father', 'Mother', 'Phone', 'Alt Phone', 'Address', 'Birth Cert'],
-    rows.map((s) => [s.admissionNo, s.name, s.classId?.name, s.father, s.mother || '', s.phone, s.alternatePhone || '',
-      s.address || '', s.birthCertificateSubmitted ? 'Submitted' : 'Pending']));
+    ['Adm No', 'Name', 'Class', 'Father', 'Mother', 'Phone', 'Alt Phone', 'Address', 'Documents Status', 'Birth Cert', 'Father Aadhaar', 'Mother Aadhaar'],
+    rows.map((s) => {
+      const count = (s.birthCertificateSubmitted ? 1 : 0) + (s.fatherAadhaarSubmitted ? 1 : 0) + (s.motherAadhaarSubmitted ? 1 : 0);
+      return [
+        s.admissionNo, s.name, s.classId?.name, s.father, s.mother || '', s.phone, s.alternatePhone || '', s.address || '',
+        count === 3 ? 'Submitted (3/3)' : `Pending (${count}/3)`,
+        s.birthCertificateSubmitted ? 'Submitted' : 'Pending',
+        s.fatherAadhaarSubmitted ? 'Submitted' : 'Pending',
+        s.motherAadhaarSubmitted ? 'Submitted' : 'Pending',
+      ];
+    }));
 
   return (
     <Panel bodyless title="Student Directory"
@@ -88,7 +98,7 @@ export default function Students() {
           <table>
             <thead>
               <tr>
-                <th>Adm. No</th><th>Student</th><th>Class</th><th>Father / Guardian</th><th>Mother Name</th><th>Contact</th><th>Address</th><th>Birth Certificate</th><th />
+                <th>Adm. No</th><th>Student</th><th>Class</th><th>Father / Guardian</th><th>Mother Name</th><th>Contact</th><th>Address</th><th>Documents</th><th />
               </tr>
             </thead>
             <tbody>
@@ -124,12 +134,20 @@ export default function Students() {
                   <td style={{ maxWidth: 200, whiteSpace: 'normal', wordBreak: 'break-word', fontSize: 12.5 }} title={s.address}>
                     {s.address || <span className="muted">—</span>}
                   </td>
-                  <td>
-                    {s.birthCertificateSubmitted ? (
-                      <Chip tone="paid">Submitted</Chip>
-                    ) : (
-                      <Chip tone="due">Pending</Chip>
-                    )}
+                  <td onClick={(e) => { e.stopPropagation(); setSelectedDocStudent(s); }}>
+                    {(() => {
+                      const count = (s.birthCertificateSubmitted ? 1 : 0) + (s.fatherAadhaarSubmitted ? 1 : 0) + (s.motherAadhaarSubmitted ? 1 : 0);
+                      const all = count === 3;
+                      return (
+                        <div style={{ cursor: 'pointer', display: 'inline-block' }} title="Click to view & upload documents">
+                          {all ? (
+                            <Chip tone="paid">Submitted (3/3)</Chip>
+                          ) : (
+                            <Chip tone="due">Pending ({count}/3)</Chip>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="t-right" onClick={(e) => e.stopPropagation()}>
                     <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
@@ -166,6 +184,16 @@ export default function Students() {
             <strong>Warning:</strong> This will permanently remove the student profile, all fee ledgers, concessions, and associated payment receipts. This action cannot be undone.
           </div>
         </Confirm>
+      )}
+      {selectedDocStudent && (
+        <StudentDocumentModal
+          student={selectedDocStudent}
+          onClose={() => setSelectedDocStudent(null)}
+          onSaved={() => {
+            load();
+            setSelectedDocStudent(null);
+          }}
+        />
       )}
     </Panel>
   );

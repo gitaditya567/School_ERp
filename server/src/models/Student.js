@@ -23,6 +23,11 @@ const studentSchema = new mongoose.Schema({
   fatherAadhaar: { type: String, default: '', trim: true },
   motherAadhaar: { type: String, default: '', trim: true },
   birthCertificateSubmitted: { type: Boolean, default: false },
+  fatherAadhaarSubmitted: { type: Boolean, default: false },
+  motherAadhaarSubmitted: { type: Boolean, default: false },
+  birthCertificateDoc: { type: String, default: '' },
+  fatherAadhaarDoc: { type: String, default: '' },
+  motherAadhaarDoc: { type: String, default: '' },
   photo: { type: String, default: '' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

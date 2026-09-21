@@ -4,7 +4,7 @@ import Ledger from '../models/Ledger.js';
 import Receipt from '../models/Receipt.js';
 import Concession from '../models/Concession.js';
 import School from '../models/School.js';
-import { asyncHandler, ApiError, audit, nextSeq, pad, balanceOf } from '../utils/helpers.js';
+import { asyncHandler, ApiError, audit, nextSeq, pad, balanceOf, generateNextAdmissionNo } from '../utils/helpers.js';
 import { assertClassScope } from '../middleware/auth.js';
 import { createLedgerForStudent } from '../services/ledger.js';
 import { invalidateClassesCache } from './masterController.js';
@@ -77,12 +77,24 @@ export const create = asyncHandler(async (req, res) => {
   if (!klass.plan.length) throw new ApiError(409, `${klass.name} has no fee plan yet. Add its instalments in Fee Master first.`);
 
   const school = await School.current();
-  const year = new Date(req.body.admissionDate || Date.now()).getFullYear().toString().slice(-2);
-  const seq = await nextSeq(`admission-${year}`);
-  const admissionNo = `${(school.name || 'SCH').replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase()}${year}${pad(seq, 4)}`;
+  let admissionNo = (req.body.admissionNo || '').trim();
+  if (admissionNo) {
+    const exists = await Student.findOne({ admissionNo });
+    if (exists) {
+      throw new ApiError(409, `Admission No. "${admissionNo}" is already assigned to ${exists.name}.`);
+    }
+  } else {
+    admissionNo = await generateNextAdmissionNo(school, req.body.admissionDate || Date.now(), Student);
+  }
 
   if (req.body.photo && req.body.photo.length > 400 * 1024) {
     throw new ApiError(413, 'Photo is too large — please use an image under 300 KB.');
+  }
+  const docFields = ['birthCertificateDoc', 'fatherAadhaarDoc', 'motherAadhaarDoc'];
+  for (const f of docFields) {
+    if (req.body[f] && req.body[f].length > 1.5 * 1024 * 1024) {
+      throw new ApiError(413, 'Document file is too large — please use a file under 1 MB.');
+    }
   }
 
   const aadhaarLast4 = req.body.aadhaarLast4 || (req.body.childAadhaar ? req.body.childAadhaar.slice(-4) : '');
@@ -118,9 +130,17 @@ export const update = asyncHandler(async (req, res) => {
   if (req.body.photo && req.body.photo.length > 400 * 1024) {
     throw new ApiError(413, 'Photo is too large — please use an image under 300 KB.');
   }
+  const docFields = ['birthCertificateDoc', 'fatherAadhaarDoc', 'motherAadhaarDoc'];
+  for (const f of docFields) {
+    if (req.body[f] && req.body[f].length > 1.5 * 1024 * 1024) {
+      throw new ApiError(413, 'Document file is too large — please use a file under 1 MB.');
+    }
+  }
   const editable = ['name', 'dob', 'gender', 'section', 'status', 'bloodGroup',
     'father', 'mother', 'phone', 'alternatePhone', 'email', 'address', 'occupation',
-    'aadhaarLast4', 'childAadhaar', 'fatherAadhaar', 'motherAadhaar', 'birthCertificateSubmitted', 'photo'];
+    'aadhaarLast4', 'childAadhaar', 'fatherAadhaar', 'motherAadhaar',
+    'birthCertificateSubmitted', 'fatherAadhaarSubmitted', 'motherAadhaarSubmitted',
+    'birthCertificateDoc', 'fatherAadhaarDoc', 'motherAadhaarDoc', 'photo'];
   editable.forEach((k) => { if (req.body[k] !== undefined) student[k] = req.body[k]; });
   if (req.body.childAadhaar && !req.body.aadhaarLast4) {
     student.aadhaarLast4 = req.body.childAadhaar.slice(-4);

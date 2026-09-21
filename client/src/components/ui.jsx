@@ -66,13 +66,18 @@ export function Drawer({ title, sub, onClose, children, footer, wide }) {
     const esc = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', esc);
     document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', esc); document.body.style.overflow = ''; };
+    document.body.classList.add('drawer-open');
+    return () => {
+      document.removeEventListener('keydown', esc);
+      document.body.style.overflow = '';
+      document.body.classList.remove('drawer-open');
+    };
   }, [onClose]);
 
   return (
     <div className="drawer-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={`drawer${wide ? ' wide' : ''}`} role="dialog" aria-modal="true">
-        <div className="drawer-head">
+        <div className="drawer-head no-print">
           <div style={{ flex: 1 }}>
             {sub && <div className="lbl">{sub}</div>}
             <h3 style={{ fontSize: 16 }}>{title}</h3>

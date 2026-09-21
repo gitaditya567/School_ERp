@@ -17,18 +17,25 @@ export default function NewAdmission() {
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
+  const [nextAdmNo, setNextAdmNo] = useState('');
+  const [customAdmission, setCustomAdmission] = useState(false);
   const [f, setF] = useState({
-    admissionDate: today, name: '', dob: '', gender: 'F', classId: '', section: 'A', bloodGroup: 'O+', photo: '',
+    admissionDate: today, admissionNo: '', name: '', dob: '', gender: 'F', classId: '', section: 'A', bloodGroup: 'O+', photo: '',
     father: '', mother: '', phone: '', alternatePhone: '', email: '', address: '', occupation: '',
-    childAadhaar: '', fatherAadhaar: '', motherAadhaar: '', birthCertificateSubmitted: false,
+    childAadhaar: '', fatherAadhaar: '', motherAadhaar: '',
+    birthCertificateSubmitted: false, fatherAadhaarSubmitted: false, motherAadhaarSubmitted: false,
     carryForward: 0, concessionReason: '', concessions: {},
   });
 
   useEffect(() => {
     document.title = 'New Admission';
-    cachedGet('/classes').then((d) => {
+    Promise.all([
+      cachedGet('/classes'),
+      api.get('/settings').catch(() => null),
+    ]).then(([d, s]) => {
       setClasses(d.classes);
       setF((v) => ({ ...v, classId: v.classId || d.classes[0]?.id || '' }));
+      if (s?.nextAdmissionNo) setNextAdmNo(s.nextAdmissionNo);
     }).catch(shout);
   }, []);
 
@@ -76,7 +83,11 @@ export default function NewAdmission() {
     if (!validate(3)) return;
     setBusy(true);
     try {
-      const res = await api.post('/students', { ...f, carryForward: Number(f.carryForward) || 0 });
+      const res = await api.post('/students', {
+        ...f,
+        carryForward: Number(f.carryForward) || 0,
+        admissionNo: customAdmission && f.admissionNo ? f.admissionNo.trim() : undefined,
+      });
       toast(`${res.student.name} admitted · ${res.student.admissionNo}`);
       nav(`/students/${res.student._id}`);
     } catch (e) {
@@ -110,7 +121,56 @@ export default function NewAdmission() {
                 <StudentPhotoPicker value={f.photo} onChange={(v) => set('photo', v)} />
               </div>
               <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))' }}>
-                <Field label="Admission No."><Input readOnly value="Generated on save" /></Field>
+                <div style={{
+                  gridColumn: '1 / -1',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                  marginBottom: 6,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>
+                      Admission Number:{' '}
+                      {!customAdmission && (
+                        <span className="mono" style={{ color: 'var(--brand)', fontWeight: 800 }}>
+                          {nextAdmNo || 'Auto-generated from sequence'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="tiny muted">
+                      {customAdmission
+                        ? 'Enter manual admission number below'
+                        : 'Will be generated automatically using the sequence configured in Settings'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => {
+                      setCustomAdmission(!customAdmission);
+                      if (customAdmission) set('admissionNo', '');
+                    }}
+                  >
+                    {customAdmission ? '✓ Use Auto Sequence' : '✎ Enter Custom No.'}
+                  </button>
+                  {customAdmission && (
+                    <div style={{ width: '100%', marginTop: 6 }}>
+                      <Input
+                        className="input mono"
+                        placeholder="e.g. PJ/2026/0105 or old register number"
+                        value={f.admissionNo || ''}
+                        onChange={(e) => set('admissionNo', e.target.value.toUpperCase())}
+                        error={errors.admissionNo}
+                      />
+                    </div>
+                  )}
+                </div>
                 <Field label="Admission date *" error={errors.admissionDate}>
                   <Input type="date" max={today} value={f.admissionDate} onChange={(e) => set('admissionDate', e.target.value)} error={errors.admissionDate} />
                 </Field>
@@ -190,14 +250,20 @@ export default function NewAdmission() {
 
               <div style={{ paddingTop: 14, borderTop: '1px dashed var(--line)' }}>
                 <div className="lbl" style={{ marginBottom: 10, color: 'var(--brand)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: 11 }}>
-                  Child Identification & Submitted Documents
+                  Child Identification & Document Verification
                 </div>
-                <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', alignItems: 'center', gap: 14 }}>
+                <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 14, marginBottom: 14 }}>
                   <Field label={`Child Aadhaar (12 digits)${f.childAadhaar ? ` · ${f.childAadhaar.length}/12` : ''}`} error={errors.childAadhaar}>
                     <Input className="input mono" inputMode="numeric" maxLength={12} value={f.childAadhaar}
                       onChange={digits('childAadhaar', 12)} placeholder="12-digit Aadhaar" error={errors.childAadhaar} />
                   </Field>
+                </div>
 
+                <div className="lbl" style={{ marginBottom: 8, fontSize: 11.5, color: 'var(--text-2)', fontWeight: 600 }}>
+                  Submitted Documents Checklist:
+                </div>
+                <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 12 }}>
+                  {/* Birth Certificate */}
                   <div
                     style={{
                       display: 'flex',
@@ -209,7 +275,6 @@ export default function NewAdmission() {
                       border: `1px solid ${f.birthCertificateSubmitted ? '#10b981' : 'var(--line)'}`,
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
-                      marginTop: 4
                     }}
                     onClick={() => set('birthCertificateSubmitted', !f.birthCertificateSubmitted)}
                   >
@@ -223,10 +288,76 @@ export default function NewAdmission() {
                     />
                     <label htmlFor="birthCertCheck" style={{ cursor: 'pointer', flex: 1, margin: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, color: f.birthCertificateSubmitted ? '#10b981' : 'var(--text)' }}>
-                        Child Birth Certificate Submitted
+                        📄 Birth Certificate Submitted
                       </div>
                       <div className="tiny muted" style={{ fontSize: 11 }}>
-                        Tick if birth certificate copy has been received
+                        Child birth certificate copy received
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Father Aadhaar */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 14px',
+                      borderRadius: 'var(--r)',
+                      background: f.fatherAadhaarSubmitted ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2)',
+                      border: `1px solid ${f.fatherAadhaarSubmitted ? '#10b981' : 'var(--line)'}`,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onClick={() => set('fatherAadhaarSubmitted', !f.fatherAadhaarSubmitted)}
+                  >
+                    <input
+                      type="checkbox"
+                      id="fatherAadhaarCheck"
+                      checked={f.fatherAadhaarSubmitted}
+                      onChange={(e) => set('fatherAadhaarSubmitted', e.target.checked)}
+                      style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#10b981' }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <label htmlFor="fatherAadhaarCheck" style={{ cursor: 'pointer', flex: 1, margin: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: f.fatherAadhaarSubmitted ? '#10b981' : 'var(--text)' }}>
+                        🪪 Father Aadhaar Submitted
+                      </div>
+                      <div className="tiny muted" style={{ fontSize: 11 }}>
+                        Father / Guardian Aadhaar copy received
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Mother Aadhaar */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 14px',
+                      borderRadius: 'var(--r)',
+                      background: f.motherAadhaarSubmitted ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-2)',
+                      border: `1px solid ${f.motherAadhaarSubmitted ? '#10b981' : 'var(--line)'}`,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onClick={() => set('motherAadhaarSubmitted', !f.motherAadhaarSubmitted)}
+                  >
+                    <input
+                      type="checkbox"
+                      id="motherAadhaarCheck"
+                      checked={f.motherAadhaarSubmitted}
+                      onChange={(e) => set('motherAadhaarSubmitted', e.target.checked)}
+                      style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#10b981' }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <label htmlFor="motherAadhaarCheck" style={{ cursor: 'pointer', flex: 1, margin: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: f.motherAadhaarSubmitted ? '#10b981' : 'var(--text)' }}>
+                        🪪 Mother Aadhaar Submitted
+                      </div>
+                      <div className="tiny muted" style={{ fontSize: 11 }}>
+                        Mother Aadhaar card copy received
                       </div>
                     </label>
                   </div>
