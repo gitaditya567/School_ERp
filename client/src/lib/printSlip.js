@@ -1,4 +1,4 @@
-import { RS, RS0, fmtDate } from './format';
+import { RS, RS0, fmtDate, formatHeadsShort } from './format';
 
 /**
  * Cleanly prints an isolated HTML document using a hidden iframe.
@@ -185,11 +185,13 @@ export function renderReceiptHTML({ receipt: r, school = {}, amountInWords = '',
               <td style="padding: 7px 8px; color: #555;">${l.reason || r.remarks || '—'}</td>
               <td class="mono" style="padding: 7px 8px; text-align: right; font-weight: 700;">${RS0(l.net || r.total)}</td>
             </tr>
-          `).join('') : lines.map((l) => `
+          `).join('') : lines.map((l) => {
+            const headsShort = formatHeadsShort(l.head);
+            return `
             <tr style="border-bottom: 1px solid #EEE9F2;">
               <td style="padding: 6px 8px;"><b>${l.instNo}</b></td>
               <td style="padding: 6px 8px;">
-                ${l.month || '—'}
+                <span>${l.month || '—'}</span>${headsShort ? ` <span style="color: #666; font-size: 10.5px; font-weight: normal;">(${headsShort})</span>` : ''}
                 ${l.reason ? `<div style="font-size: 10px; color: #B01B5C;">${l.reason}</div>` : ''}
                 ${l.balanceRemaining > 0 ? `<div style="font-size: 10px; color: #B3271E; font-weight: 600;">Bal: ${RS(l.balanceRemaining)}</div>` : ''}
               </td>
@@ -198,7 +200,8 @@ export function renderReceiptHTML({ receipt: r, school = {}, amountInWords = '',
               <td class="mono" style="padding: 6px 8px; text-align: right;">${l.lateFee ? RS0(l.lateFee) : '—'}</td>
               <td class="mono" style="padding: 6px 8px; text-align: right; font-weight: 700;">${RS0(l.net)}</td>
             </tr>
-          `).join('')}
+          `;
+          }).join('')}
         </tbody>
         <tfoot>
           <tr style="border-top: 1.5px solid #2C1930; background: #FAF7FA;">

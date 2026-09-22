@@ -40,3 +40,37 @@ export const statusOf = (row) => {
   if (due.getMonth() === now.getMonth() && due.getFullYear() === now.getFullYear()) return { k: 'due', t: 'Due now' };
   return { k: 'up', t: 'Upcoming' };
 };
+
+/**
+ * Formats a fee head or list of heads into a clean, concise string for receipt slips
+ * e.g. "Tuition Fee" -> "Tuition"
+ * "Tuition Fee, Admission Fee, Kit Charges" -> "Tuition, Admission, Kit"
+ */
+export function formatHeadsShort(headStr) {
+  if (!headStr) return '';
+  const rawList = Array.isArray(headStr)
+    ? headStr
+    : String(headStr).split(',').map((s) => s.trim()).filter(Boolean);
+
+  if (!rawList.length) return '';
+
+  const shortNames = rawList.map((h) => {
+    const trimmed = h.trim();
+    if (/^tuition(\s+fee)?$/i.test(trimmed)) return 'Tuition';
+    if (/^admission(\s+fee)?$/i.test(trimmed)) return 'Admission';
+    if (/^form\s*(\/|\&)\s*prospectus$/i.test(trimmed)) return 'Prospectus';
+    if (/^kit(\s+charges)?$/i.test(trimmed)) return 'Kit';
+    if (/^(half\s+)?annual(\s+fee)?$/i.test(trimmed)) return 'Annual';
+    if (/^examination(\s+fee)?$/i.test(trimmed)) return 'Exam';
+    if (/^transport(\s+fee)?$/i.test(trimmed)) return 'Transport';
+    if (/^computer(\s+fee)?$/i.test(trimmed)) return 'Computer';
+    if (/^activity(\s+charges)?$/i.test(trimmed)) return 'Activity';
+    if (/^previous(\s+session)?\s+(balance|due)$/i.test(trimmed) || /^carry\s*forward$/i.test(trimmed)) return 'Prev. Due';
+
+    const cleaned = trimmed.replace(/\s+(fee|charges|charge)$/i, '').trim();
+    return cleaned || trimmed;
+  });
+
+  return [...new Set(shortNames)].join(', ');
+}
+

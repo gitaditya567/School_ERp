@@ -40,11 +40,42 @@ export const get = asyncHandler(async (req, res) => {
   const [receipt, school] = await Promise.all([
     Receipt.findById(req.params.id)
       .populate('student', 'name admissionNo father section phone')
-      .populate('classId', 'name')
+      .populate({
+        path: 'classId',
+        select: 'name code plan',
+        populate: { path: 'plan.parts.head', select: 'name code type' },
+      })
       .populate('collectedBy', 'name').lean(),
     School.current(),
   ]);
   if (!receipt) throw new ApiError(404, 'Receipt not found.');
+
+  // Auto-enrich receipt.lines for any lines where head is missing (e.g. legacy/existing receipts)
+  if (receipt.type !== 'misc' && receipt.lines && receipt.classId?.plan) {
+    const planByNo = new Map(receipt.classId.plan.map((p) => [p.no, p]));
+    let needsUpdate = false;
+    receipt.lines.forEach((l) => {
+      if (!l.head) {
+        if (l.instNo === 'C/F') {
+          l.head = 'Previous Balance';
+          needsUpdate = true;
+        } else {
+          const inst = planByNo.get(l.instNo);
+          if (inst?.parts?.length) {
+            const names = [...new Set(inst.parts.map((pt) => pt.head?.name || pt.head).filter(Boolean))];
+            if (names.length) {
+              l.head = names.join(', ');
+              needsUpdate = true;
+            }
+          }
+        }
+      }
+    });
+    if (needsUpdate) {
+      Receipt.updateOne({ _id: receipt._id }, { $set: { lines: receipt.lines } }).catch(() => {});
+    }
+  }
+
   res.json({ ok: true, receipt, amountInWords: amountInWords(receipt.total), school });
 });
 

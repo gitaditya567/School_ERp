@@ -3,7 +3,7 @@ import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Drawer, Loading, Field, Input } from '../components/ui';
 import { useToast } from '../context/ToastContext';
-import { RS, RS0, fmtDate } from '../lib/format';
+import { RS, RS0, fmtDate, formatHeadsShort } from '../lib/format';
 import { printReceiptSlip } from '../lib/printSlip';
 
 export default function ReceiptView({ id, onClose, onChanged }) {
@@ -167,19 +167,28 @@ export default function ReceiptView({ id, onClose, onChanged }) {
               </tr>
             </thead>
             <tbody>
-              {r.lines.map((l) => (
-                <tr key={l.instNo}>
-                  <td style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2' }}><b>{l.instNo}</b></td>
-                  <td style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2' }}>
-                    {l.month}{l.reason && <div style={{ fontSize: 10.5, color: '#B01B5C' }}>{l.reason}</div>}
-                    {l.balanceRemaining > 0 && <div style={{ fontSize: 10.5, color: '#B3271E', fontWeight: 600 }}>Bal. due: {RS(l.balanceRemaining)} (Partial)</div>}
-                  </td>
-                  <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right' }}>{RS0(l.gross)}</td>
-                  <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', color: '#B01B5C' }}>{l.discount ? `−${RS0(l.discount)}` : '—'}</td>
-                  <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right' }}>{l.lateFee ? RS0(l.lateFee) : '—'}</td>
-                  <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', fontWeight: 700 }}>{RS0(l.net)}</td>
-                </tr>
-              ))}
+              {r.lines.map((l) => {
+                const headsShort = formatHeadsShort(l.head);
+                return (
+                  <tr key={l.instNo}>
+                    <td style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2' }}><b>{l.instNo}</b></td>
+                    <td style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2' }}>
+                      <span>{l.month}</span>
+                      {headsShort && (
+                        <span style={{ color: '#6A6076', fontSize: 11, marginLeft: 5, fontWeight: 500 }}>
+                          ({headsShort})
+                        </span>
+                      )}
+                      {l.reason && <div style={{ fontSize: 10.5, color: '#B01B5C' }}>{l.reason}</div>}
+                      {l.balanceRemaining > 0 && <div style={{ fontSize: 10.5, color: '#B3271E', fontWeight: 600 }}>Bal. due: {RS(l.balanceRemaining)} (Partial)</div>}
+                    </td>
+                    <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right' }}>{RS0(l.gross)}</td>
+                    <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', color: '#B01B5C' }}>{l.discount ? `−${RS0(l.discount)}` : '—'}</td>
+                    <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right' }}>{l.lateFee ? RS0(l.lateFee) : '—'}</td>
+                    <td className="mono" style={{ padding: '7px 8px', borderBottom: '1px solid #EEE9F2', textAlign: 'right', fontWeight: 700 }}>{RS0(l.net)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr>

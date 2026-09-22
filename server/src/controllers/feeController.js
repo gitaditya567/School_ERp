@@ -58,7 +58,11 @@ export const collect = asyncHandler(async (req, res) => {
   const { studentId, date, mode, refNo = '', remarks = '', lines = [] } = req.body;
   if (!lines.length) throw new ApiError(422, 'Select at least one instalment to collect.');
 
-  const student = await Student.findById(studentId).populate('classId', 'name code');
+  const student = await Student.findById(studentId).populate({
+    path: 'classId',
+    select: 'name code plan',
+    populate: { path: 'plan.parts.head', select: 'name code' },
+  });
   if (!student) throw new ApiError(404, 'Student not found.');
   assertClassScope(req, student.classId._id);
 
@@ -92,6 +96,8 @@ export const collect = asyncHandler(async (req, res) => {
       throw new ApiError(422, 'Instalments must be collected in strict sequential order.');
     }
   }
+
+  const planByNo = new Map(student.classId?.plan?.map((p) => [p.no, p]) || []);
 
   const prepared = lines.map((line) => {
     const row = rows.find((r) => String(r._id) === String(line.ledgerId));
@@ -129,8 +135,20 @@ export const collect = asyncHandler(async (req, res) => {
       throw new ApiError(422, `Cannot collect subsequent instalments until instalment ${row.instNo} is fully cleared.`);
     }
 
+    let head = '';
+    if (row.isCarryForward || row.instNo === 'C/F') {
+      head = 'Previous Balance';
+    } else {
+      const planInst = planByNo.get(row.instNo);
+      if (planInst?.parts?.length) {
+        const rawNames = [...new Set(planInst.parts.map((pt) => pt.head?.name || pt.head).filter(Boolean))];
+        head = rawNames.join(', ');
+      }
+    }
+
     return {
       row,
+      head,
       discount,
       lateFee,
       reason: String(line.discountReason || '').trim(),
@@ -155,8 +173,15 @@ export const collect = asyncHandler(async (req, res) => {
       student: student._id,
       classId: student.classId._id,
       lines: prepared.map((p) => ({
-        ledger: p.row._id, instNo: p.row.instNo, month: p.row.month,
-        gross: p.balance, discount: p.discount, reason: p.reason, lateFee: p.lateFee, net: p.net,
+        ledger: p.row._id,
+        head: p.head || '',
+        instNo: p.row.instNo,
+        month: p.row.month,
+        gross: p.balance,
+        discount: p.discount,
+        reason: p.reason,
+        lateFee: p.lateFee,
+        net: p.net,
         balanceRemaining: p.balanceRemaining,
       })),
       gross: prepared.reduce((s, p) => s + p.balance, 0),
