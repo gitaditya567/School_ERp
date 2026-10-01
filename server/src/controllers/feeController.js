@@ -11,12 +11,24 @@ import { withTransaction } from '../config/db.js';
 
 /** GET /api/fee/pending/:studentId — what can be collected today, with suggested late fee and previous receipts. */
 export const pending = asyncHandler(async (req, res) => {
-  const student = await Student.findById(req.params.studentId).populate('classId', 'name code');
+  const student = await Student.findById(req.params.studentId).populate({
+    path: 'classId',
+    select: 'name code plan',
+    populate: { path: 'plan.parts.head', select: 'name code' },
+  });
   if (!student) throw new ApiError(404, 'Student not found.');
   assertClassScope(req, student.classId._id);
 
   const school = await School.current();
   const payDate = req.query.date ? new Date(req.query.date) : new Date();
+  if (Number.isNaN(payDate.getTime())) throw new ApiError(422, 'Enter a valid payment date.');
+
+  // Fee-head breakdown of every instalment, so the collect screen can show what the gross is made of.
+  const partsByNo = new Map((student.classId?.plan || []).map((p) => [p.no, (p.parts || [])
+    .filter((pt) => pt.amount > 0)
+    .map((pt) => ({ head: pt.head?.name || 'Fee', amount: pt.amount }))]));
+  const studentOut = student.toJSON();
+  if (studentOut.classId) delete studentOut.classId.plan;
   const [rows, receipts, counter] = await Promise.all([
     Ledger.find({ student: student._id }).sort('order dueDate'),
     Receipt.find({ student: student._id }).populate('collectedBy', 'name').sort('-date -seq').lean(),
@@ -28,7 +40,7 @@ export const pending = asyncHandler(async (req, res) => {
 
   res.json({
     ok: true,
-    student,
+    student: studentOut,
     school,
     receipts,
     nextReceiptNo,
@@ -44,6 +56,9 @@ export const pending = asyncHandler(async (req, res) => {
         ...l.toJSON(),
         balance: bal,
         daysLate,
+        parts: (l.isCarryForward || l.instNo === 'C/F')
+          ? [{ head: 'Previous Balance', amount: l.gross }]
+          : (partsByNo.get(l.instNo) || []),
         suggestedLateFee: bal > 0 ? Math.max(0, lateFeeFor(l, payDate, school) - (l.lateFee || 0)) : 0,
       };
     }),

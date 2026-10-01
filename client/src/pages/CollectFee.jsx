@@ -25,6 +25,38 @@ const MISC_CATEGORIES = [
 const PRESET_AMOUNTS = [200, 500, 1000, 1500, 2000, 2500, 5000];
 const today = new Date().toISOString().slice(0, 10);
 
+/** Adds up the fee heads behind the balance of the given ledger rows; `adjust` is whatever the heads don't explain (earlier payment, concession, edits). */
+function headBreakdown(rows) {
+  const map = new Map();
+  let adjust = 0;
+  for (const r of rows) {
+    const parts = r.parts || [];
+    for (const p of parts) map.set(p.head, (map.get(p.head) || 0) + p.amount);
+    adjust += r.balance - parts.reduce((s, p) => s + p.amount, 0);
+  }
+  return { heads: [...map].map(([head, amount]) => ({ head, amount })), adjust };
+}
+
+function HeadLines({ rows }) {
+  const { heads, adjust } = headBreakdown(rows);
+  if (!heads.length) return <div className="tiny muted">No fee-head breakup in the Fee Master for this instalment.</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {heads.map((h) => (
+        <div key={h.head} className="row tiny" style={{ justifyContent: 'space-between' }}>
+          <span>{h.head}</span><span className="mono">{RS(h.amount)}</span>
+        </div>
+      ))}
+      {adjust !== 0 && (
+        <div className="row tiny" style={{ justifyContent: 'space-between', color: 'var(--warn)' }}>
+          <span>{adjust < 0 ? 'Less: paid / adjusted earlier' : 'Add: other charges'}</span>
+          <span className="mono">{adjust < 0 ? '− ' : '+ '}{RS(Math.abs(adjust))}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CollectFee() {
   const [params, setParams] = useSearchParams();
   const studentId = params.get('student');
@@ -43,6 +75,7 @@ export default function CollectFee() {
   const [receiptId, setReceiptId] = useState(null);
   const [isPartial, setIsPartial] = useState(false);
   const [partialAmount, setPartialAmount] = useState('');
+  const [openHeads, setOpenHeads] = useState({});
 
   // Misc fee state
   const [misc, setMisc] = useState({
@@ -85,7 +118,22 @@ export default function CollectFee() {
     setData(null); setSel({}); setIsPartial(false); setPartialAmount('');
     api.get(`/fee/pending/${studentId}`, { params: { date: pay.date } }).then(setData).catch(shout);
   };
-  useEffect(() => { if (studentId) loadStudent(); }, [studentId, pay.date]);
+  useEffect(() => { if (studentId) loadStudent(); }, [studentId]);
+
+  // A new payment date only re-prices the late fee: refresh quietly, without blanking the screen or dropping the selection.
+  useEffect(() => {
+    if (!studentId || !data || !/^\d{4}-\d{2}-\d{2}$/.test(pay.date)) return undefined;
+    const id = setTimeout(() => {
+      api.get(`/fee/pending/${studentId}`, { params: { date: pay.date } }).then((d) => {
+        setData(d);
+        setSel((p) => Object.fromEntries(Object.entries(p)
+          .map(([rid, v]) => [rid, v, d.rows.find((r) => r._id === rid)])
+          .filter(([, , r]) => r && r.balance > 0)
+          .map(([rid, v, r]) => [rid, { ...v, lateFee: r.suggestedLateFee }])));
+      }).catch(shout);
+    }, 300);
+    return () => clearTimeout(id);
+  }, [pay.date]);
 
   /* -------------------- student picker (no student selected) -------------------- */
   if (!studentId) {
@@ -796,17 +844,32 @@ export default function CollectFee() {
               <Empty>Select instalments on the left.<br /><span className="tiny">Discount and late fee can be set per row.</span></Empty>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-                {Object.keys(sel).map((id) => {
-                  const r = rows.find((x) => x._id === id);
-                  return (
-                    <div key={id} className="row" style={{ justifyContent: 'space-between', fontSize: 12.5 }}>
-                      <span>Inst. <b className="mono">{r.instNo}</b> <span className="muted tiny">{r.month}</span></span>
+                {selectedList.map((r) => (
+                  <div key={r._id}>
+                    <div className="row clickable" style={{ justifyContent: 'space-between', fontSize: 12.5, cursor: 'pointer' }}
+                      title="Show fee heads" onClick={() => setOpenHeads((p) => ({ ...p, [r._id]: !p[r._id] }))}>
+                      <span><span className="muted tiny">{openHeads[r._id] ? '▾' : '▸'}</span> Inst. <b className="mono">{r.instNo}</b> <span className="muted tiny">{r.month}</span></span>
                       <span className="mono">{RS(r.balance)}</span>
                     </div>
-                  );
-                })}
+                    {openHeads[r._id] && (
+                      <div style={{ margin: '4px 0 2px 14px', paddingLeft: 8, borderLeft: '2px solid var(--brand-line)' }}>
+                        <HeadLines rows={[r]} />
+                      </div>
+                    )}
+                  </div>
+                ))}
                 <hr className="hr" style={{ margin: '2px 0' }} />
-                <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">Gross</span><span className="mono">{RS(totals.gross)}</span></div>
+                <div className="row clickable" style={{ justifyContent: 'space-between', cursor: 'pointer' }}
+                  title="Show gross by fee head" onClick={() => setOpenHeads((p) => ({ ...p, all: !p.all }))}>
+                  <span className="muted">Gross <span className="tiny" style={{ color: 'var(--brand)' }}>{openHeads.all ? '▾ hide heads' : '▸ fee heads'}</span></span>
+                  <span className="mono">{RS(totals.gross)}</span>
+                </div>
+                {openHeads.all && (
+                  <div style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 7, padding: '8px 10px' }}>
+                    <div className="tiny" style={{ fontWeight: 700, marginBottom: 5, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Gross by fee head</div>
+                    <HeadLines rows={selectedList} />
+                  </div>
+                )}
                 <div className="row" style={{ justifyContent: 'space-between' }}><span style={{ color: 'var(--brand)' }}>Discount</span><span className="mono" style={{ color: 'var(--brand)' }}>− {RS(totals.discount)}</span></div>
                 <div className="row" style={{ justifyContent: 'space-between' }}><span className="muted">Late fee</span><span className="mono">+ {RS(totals.lateFee)}</span></div>
                 <div className="row" style={{ justifyContent: 'space-between', borderTop: '1px solid var(--line)', paddingTop: 9 }}>
