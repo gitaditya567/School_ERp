@@ -5,7 +5,8 @@ import { Panel, Kpi, Chip, Loading, ErrorBox, Empty, Input, Select, Bar } from '
 import ReceiptView from './ReceiptView';
 import { RS, fmtDate, downloadCSV } from '../lib/format';
 
-const MODES = ['UPI', 'Bank Transfer (NEFT/IMPS)', 'Cheque', 'Demand Draft', 'Cash (at office)', 'Card'];
+// Cash and Online are collected today; the rest remain for older receipts.
+const MODES = ['Cash', 'Online', 'UPI', 'Bank Transfer (NEFT/IMPS)', 'Cheque', 'Demand Draft', 'Cash (at office)', 'Card'];
 
 export default function Receipts() {
   const { can } = useAuth();

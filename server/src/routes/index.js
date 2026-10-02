@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { body, query } from 'express-validator';
 import { protect, requirePerm, requireView } from '../middleware/auth.js';
 import { checkValidation } from '../middleware/error.js';
@@ -8,6 +8,7 @@ import * as users from '../controllers/userController.js';
 import * as master from '../controllers/masterController.js';
 import * as students from '../controllers/studentController.js';
 import * as fee from '../controllers/feeController.js';
+import * as payments from '../controllers/paymentController.js';
 import * as receipts from '../controllers/receiptController.js';
 import * as concessions from '../controllers/concessionController.js';
 import * as concessionReasons from '../controllers/concessionReasonController.js';
@@ -30,6 +31,10 @@ r.post('/auth/login', [
   body('email').isEmail().withMessage('Enter a valid email address.'),
   body('password').notEmpty().withMessage('Enter your password.'),
 ], V, auth.login);
+
+/* Atom posts the payer's browser back here — trusted only after its signature is verified. */
+r.post('/payments/atom/callback', express.urlencoded({ extended: false, limit: '100kb' }), payments.callback);
+r.post('/payments/atom/notify', express.urlencoded({ extended: false, limit: '100kb' }), express.json({ limit: '100kb' }), payments.notify);
 
 r.use(protect);                       // everything below needs a signed-in user
 
@@ -110,6 +115,15 @@ r.post('/fee/collect-misc', requirePerm('collect'), [
   body('head').trim().notEmpty().withMessage('Enter fee purpose / head.'),
   body('mode').trim().notEmpty().withMessage('Choose a payment mode.'),
 ], V, fee.collectMisc);
+
+/* --------------------------- online payments --------------------------- */
+r.get('/payments/config', requirePerm('collect'), payments.config);
+r.get('/payments/online', requirePerm('collect'), payments.list);
+r.post('/payments/online/start', requirePerm('collect'), [
+  body('studentId').notEmpty().withMessage('Choose a student.'),
+], V, payments.start);
+r.get('/payments/online/:id', requirePerm('collect'), payments.status);
+r.post('/payments/online/:id/cancel', requirePerm('collect'), payments.cancel);
 
 /* ------------------------------ receipts ------------------------------- */
 r.get('/receipts', requireView('receipts'), receipts.list);

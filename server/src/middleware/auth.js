@@ -41,7 +41,7 @@ export const protect = asyncHandler(async (req, _res, next) => {
   req.user = user;
   req.role = roleOf(user.role);
   // class teachers are limited to their own class everywhere
-  req.scopeClass = user.role === 'teacher' && user.classId ? String(user.classId) : null;
+  req.scopeClass = user.role === 'teacher' && user.classId ? String(user.classId._id || user.classId) : null;
   next();
 });
 

@@ -70,7 +70,30 @@ export const pending = asyncHandler(async (req, res) => {
  * body: { studentId, date, mode, refNo, remarks, lines:[{ledgerId, discount, discountReason, lateFee, payingAmount}] }
  */
 export const collect = asyncHandler(async (req, res) => {
-  const { studentId, date, mode, refNo = '', remarks = '', lines = [] } = req.body;
+  assertNotOnline(req.body.mode);
+  const ctx = await prepareCollection(req, req.body);
+  const receipt = await commitCollection(req, ctx, req.body);
+  res.status(201).json(await receiptResponse(receipt._id, ctx.total, ctx.school));
+});
+
+/** "Online" receipts are only ever created by the payment gateway callback, never typed in by hand. */
+function assertNotOnline(mode) {
+  if (String(mode || '').trim().toLowerCase() === 'online') {
+    throw new ApiError(422, 'Online payments are recorded automatically by the payment gateway.');
+  }
+}
+
+async function receiptResponse(id, total, school) {
+  const full = await Receipt.findById(id)
+    .populate('student', 'name admissionNo father section')
+    .populate('classId', 'name')
+    .populate('collectedBy', 'name');
+  return { ok: true, receipt: full, amountInWords: amountInWords(total), school };
+}
+
+/** Validates a regular fee collection and prices every line. Shared by cash and online collection. */
+export async function prepareCollection(req, body) {
+  const { studentId, date, lines = [] } = body;
   if (!lines.length) throw new ApiError(422, 'Select at least one instalment to collect.');
 
   const student = await Student.findById(studentId).populate({
@@ -178,6 +201,11 @@ export const collect = asyncHandler(async (req, res) => {
   // A full waiver is a valid receipt for ₹0; a receipt with neither money nor concession is not.
   if (total <= 0 && waived <= 0) throw new ApiError(422, 'The receipt total cannot be zero.');
 
+  return { student, school, payDate, prepared, total };
+}
+
+/** Writes the receipt, ledger updates and concessions for a prepared collection. */
+export async function commitCollection(req, { student, school, payDate, prepared, total }, { mode, refNo = '', remarks = '' }) {
   const receipt = await withTransaction(async (session) => {
     const seq = await nextSeq('receipt', session);
     const receiptNo = `${school.receiptPrefix}${pad(seq, 4)}`;
@@ -227,13 +255,9 @@ export const collect = asyncHandler(async (req, res) => {
     return doc;
   });
 
-  await audit(req, 'receipt.create', 'Receipt', receipt._id, { receiptNo: receipt.receiptNo, total });
-  const full = await Receipt.findById(receipt._id)
-    .populate('student', 'name admissionNo father section')
-    .populate('classId', 'name')
-    .populate('collectedBy', 'name');
-  res.status(201).json({ ok: true, receipt: full, amountInWords: amountInWords(total), school });
-});
+  await audit(req, 'receipt.create', 'Receipt', receipt._id, { receiptNo: receipt.receiptNo, total, mode });
+  return receipt;
+}
 
 /** GET /api/fee/next-receipt-no — gets the next sequential receipt number */
 export const getNextReceiptNo = asyncHandler(async (_req, res) => {
@@ -249,7 +273,15 @@ export const getNextReceiptNo = asyncHandler(async (_req, res) => {
  * body: { studentId, amount, head, date, mode, refNo, remarks }
  */
 export const collectMisc = asyncHandler(async (req, res) => {
-  const { studentId, amount, head, date, mode, refNo = '', remarks = '' } = req.body;
+  assertNotOnline(req.body.mode);
+  const ctx = await prepareMisc(req, req.body);
+  const receipt = await commitMisc(req, ctx, req.body);
+  res.status(201).json(await receiptResponse(receipt._id, ctx.numAmount, ctx.school));
+});
+
+/** Validates a miscellaneous fee collection. Shared by cash and online collection. */
+export async function prepareMisc(req, body) {
+  const { studentId, amount, head, date, mode } = body;
   const numAmount = Number(amount);
 
   if (!studentId) throw new ApiError(422, 'Select a student.');
@@ -265,6 +297,10 @@ export const collectMisc = asyncHandler(async (req, res) => {
   const payDate = date ? new Date(date) : new Date();
   if (Number.isNaN(payDate.getTime())) throw new ApiError(422, 'Enter a valid payment date.');
 
+  return { student, school, payDate, numAmount, head: String(head).trim(), total: numAmount };
+}
+
+export async function commitMisc(req, { student, school, payDate, numAmount }, { head, mode, refNo = '', remarks = '' }) {
   const receipt = await withTransaction(async (session) => {
     const seq = await nextSeq('receipt', session);
     const receiptNo = `${school.receiptPrefix}${pad(seq, 4)}`;
@@ -304,13 +340,8 @@ export const collectMisc = asyncHandler(async (req, res) => {
     admissionNo: student.admissionNo,
     head: String(head).trim(),
     total: numAmount,
+    mode,
   });
-
-  const full = await Receipt.findById(receipt._id)
-    .populate('student', 'name admissionNo father section')
-    .populate('classId', 'name')
-    .populate('collectedBy', 'name');
-
-  res.status(201).json({ ok: true, receipt: full, amountInWords: amountInWords(numAmount), school });
-});
+  return receipt;
+}
 

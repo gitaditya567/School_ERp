@@ -3,11 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Panel, Chip, Loading, Empty, Input, Select, Field } from '../components/ui';
+import { Panel, Chip, Loading, Empty, Input, Field } from '../components/ui';
 import ReceiptView from './ReceiptView';
 import { RS, fmtDate, initials, statusOf } from '../lib/format';
 
-const MODES = ['UPI', 'Bank Transfer (NEFT/IMPS)', 'Cheque', 'Demand Draft', 'Cash (at office)', 'Card'];
+const PAY_MODES = [{ id: 'Cash', label: 'Cash', icon: '💵' }, { id: 'Online', label: 'Online', icon: '🌐' }];
 const REASONS = ['Sibling Concession', 'Staff Ward', 'Full Session Advance', 'Merit Scholarship',
   'Financial Hardship', 'Management Approval', 'Fee Card Correction'];
 const MISC_CATEGORIES = [
@@ -35,6 +35,48 @@ function headBreakdown(rows) {
     adjust += r.balance - parts.reduce((s, p) => s + p.amount, 0);
   }
   return { heads: [...map].map(([head, amount]) => ({ head, amount })), adjust };
+}
+
+let atomScript = null;
+/** Loads Atom's atomcheckout.js once. */
+function loadAtom(src) {
+  if (window.AtomPaynetz) return Promise.resolve();
+  if (!atomScript) {
+    atomScript = new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = src;
+      el.async = true;
+      el.onload = () => (window.AtomPaynetz ? resolve() : reject(new Error('The payment gateway did not load properly.')));
+      el.onerror = () => { atomScript = null; el.remove(); reject(new Error('Could not load the payment gateway. Check the internet connection.')); };
+      document.body.appendChild(el);
+    });
+  }
+  return atomScript;
+}
+
+function ModePicker({ value, onChange, onlineEnabled }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      {PAY_MODES.map((m) => {
+        const off = m.id === 'Online' && !onlineEnabled;
+        const on = value === m.id;
+        return (
+          <button key={m.id} type="button" disabled={off} onClick={() => onChange(m.id)}
+            title={off ? 'Online payment is not configured yet (Atom keys missing on the server)' : undefined}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 12px',
+              borderRadius: 8, fontSize: 13.5, fontWeight: on ? 700 : 500,
+              border: on ? '2px solid var(--brand)' : '1px solid var(--line)',
+              background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
+              color: on ? 'var(--brand-ink)' : 'var(--text-1)',
+              cursor: off ? 'not-allowed' : 'pointer', opacity: off ? 0.5 : 1,
+            }}>
+            <span>{m.icon}</span>{m.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function HeadLines({ rows }) {
@@ -70,7 +112,7 @@ export default function CollectFee() {
   const [search, setSearch] = useState('');
   const [data, setData] = useState(null);
   const [sel, setSel] = useState({});
-  const [pay, setPay] = useState({ date: today, mode: MODES[0], refNo: '', remarks: '' });
+  const [pay, setPay] = useState({ date: today, mode: 'Cash', refNo: '', remarks: '' });
   const [busy, setBusy] = useState(false);
   const [receiptId, setReceiptId] = useState(null);
   const [isPartial, setIsPartial] = useState(false);
@@ -82,14 +124,17 @@ export default function CollectFee() {
     category: 'Uniform',
     head: 'Uniform / Dress',
     amount: '',
-    mode: MODES[0],
+    mode: 'Cash',
     refNo: '',
     remarks: '',
     date: today,
   });
   const [miscBusy, setMiscBusy] = useState(false);
+  const [gatewayOn, setGatewayOn] = useState(false);
+  const [online, setOnline] = useState(null); // { order } while the Atom checkout is open
 
   useEffect(() => { document.title = 'Collect Fee'; }, []);
+  useEffect(() => { api.get('/payments/config').then((d) => setGatewayOn(Boolean(d.enabled))).catch(() => {}); }, []);
 
   useEffect(() => {
     if (params.get('mode') === 'misc') {
@@ -134,6 +179,98 @@ export default function CollectFee() {
     }, 300);
     return () => clearTimeout(id);
   }, [pay.date]);
+
+  /* -------------------- online (Atom) payment -------------------- */
+  const finishOnline = (order) => {
+    setOnline(null);
+    if (order.status === 'success') {
+      toast(`Online payment received · ${RS(order.amount)}`);
+      if (order.receipt) setReceiptId(order.receipt);
+      setMisc((prev) => ({ ...prev, amount: '', remarks: '' }));
+      // Refresh in place — blanking the page would hide the receipt drawer.
+      setSel({}); setIsPartial(false); setPartialAmount('');
+      api.get(`/fee/pending/${studentId}`, { params: { date: pay.date } }).then(setData).catch(shout);
+    } else if (order.status === 'unreconciled') {
+      shout(order.message || 'Payment received but the receipt could not be created — check Online Payments.');
+    } else {
+      toast(order.message || 'Online payment was not completed.');
+    }
+  };
+
+  const cancelOnline = async () => {
+    if (!online) return;
+    try {
+      const d = await api.post(`/payments/online/${online.order.id}/cancel`);
+      if (d.order) finishOnline(d.order);
+      else finishOnline((await api.get(`/payments/online/${online.order.id}`)).order);
+    } catch (e) { shout(e); }
+  };
+
+  const startOnline = async (body, setWorking) => {
+    setWorking(true);
+    let started = null;
+    try {
+      started = await api.post('/payments/online/start', body);
+      await loadAtom(started.checkout.cdnUrl);
+      setOnline({ order: started.order });
+      const c = started.checkout;
+      // eslint-disable-next-line no-new
+      new window.AtomPaynetz({
+        atomTokenId: c.atomTokenId, merchId: c.merchId, custEmail: c.custEmail, custMobile: c.custMobile, returnUrl: c.returnUrl,
+      }, c.env);
+    } catch (e) {
+      if (started) api.post(`/payments/online/${started.order.id}/cancel`).catch(() => {});
+      setOnline(null);
+      shout(e);
+    } finally { setWorking(false); }
+  };
+
+  // While the checkout is open, poll the server — the gateway callback records the receipt there.
+  useEffect(() => {
+    if (!online) return undefined;
+    const t = setInterval(() => {
+      api.get(`/payments/online/${online.order.id}`).then((d) => {
+        if (!['pending', 'processing'].includes(d.order.status)) finishOnline(d.order);
+      }).catch(() => {});
+    }, 3000);
+    const onMsg = (e) => { if (e.data === 'cancelTransaction' || e.data === 'sessionTimeout') cancelOnline(); };
+    window.addEventListener('message', onMsg);
+    return () => { clearInterval(t); window.removeEventListener('message', onMsg); };
+  }, [online?.order?.id]);
+
+  // Back from the gateway: /collect?student=…&payment=<id> (or &payerror=…)
+  useEffect(() => {
+    const pid = params.get('payment');
+    const perr = params.get('payerror');
+    if (!pid && !perr) return;
+    const next = new URLSearchParams(params);
+    next.delete('payment'); next.delete('payerror');
+    setParams(next, { replace: true });
+    if (perr) { shout(perr); return; }
+    api.get(`/payments/online/${pid}`).then((d) => {
+      if (['pending', 'processing'].includes(d.order.status)) setOnline({ order: d.order });
+      else finishOnline(d.order);
+    }).catch(shout);
+  }, []);
+
+  const onlineBanner = online && (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderRadius: 8,
+      border: '1px solid var(--brand-line)', background: 'var(--brand-soft)', color: 'var(--brand-ink)',
+    }}>
+      <span style={{ fontSize: 20 }}>⏳</span>
+      <div style={{ flex: 1, minWidth: 200 }}>
+        <b>Waiting for online payment of {RS(online.order.amount)}</b>
+        <div className="tiny">Complete the payment in the gateway window. The receipt appears here automatically. Txn {online.order.merchTxnId}</div>
+      </div>
+      <button type="button" className="btn btn-sm" onClick={() => api.get(`/payments/online/${online.order.id}`, { params: { refresh: 1 } })
+        .then((d) => (['pending', 'processing'].includes(d.order.status)
+          ? toast(d.note || d.order.message || 'Still waiting for the gateway…') : finishOnline(d.order))).catch(shout)}>
+        Check status
+      </button>
+      <button type="button" className="btn btn-sm btn-ghost" onClick={cancelOnline}>Cancel</button>
+    </div>
+  );
 
   /* -------------------- student picker (no student selected) -------------------- */
   if (!studentId) {
@@ -251,6 +388,17 @@ export default function CollectFee() {
   const payableNow = effectiveIsPartial ? Math.max(0, Math.min(grandTotal, Number(partialAmount) || 0)) : grandTotal;
 
   const submit = async () => {
+    if (pay.mode === 'Online') {
+      if (effectiveIsPartial) {
+        const amt = Number(partialAmount) || 0;
+        if (amt <= 0 || amt >= grandTotal) { toast('Enter a partial amount greater than zero and less than the total.'); return; }
+      }
+      const lines = Object.entries(sel).map(([ledgerId, v], idx) => ({
+        ledgerId, ...v, ...(effectiveIsPartial && idx === 0 ? { payingAmount: Number(partialAmount) } : {}),
+      }));
+      await startOnline({ kind: 'regular', studentId, remarks: pay.remarks, lines }, setBusy);
+      return;
+    }
     if (effectiveIsPartial) {
       const amt = Number(partialAmount) || 0;
       if (amt <= 0) {
@@ -297,6 +445,10 @@ export default function CollectFee() {
       toast('Please enter a valid amount greater than zero.');
       return;
     }
+    if (misc.mode === 'Online') {
+      await startOnline({ kind: 'misc', studentId, amount: amt, head: finalHead, remarks: misc.remarks }, setMiscBusy);
+      return;
+    }
     setMiscBusy(true);
     try {
       const res = await api.post('/fee/collect-misc', {
@@ -321,6 +473,7 @@ export default function CollectFee() {
 
   return (
     <div className="stack">
+      {onlineBanner}
       {/* Top Mode Segmented Switcher */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <button
@@ -496,19 +649,16 @@ export default function CollectFee() {
                 {/* Payment Details */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
                   <Field label="Payment Mode">
-                    <Select value={misc.mode} onChange={(e) => setMisc({ ...misc, mode: e.target.value })}>
-                      {MODES.map((m) => <option key={m}>{m}</option>)}
-                    </Select>
+                    <ModePicker value={misc.mode} onlineEnabled={gatewayOn}
+                      onChange={(m) => setMisc({ ...misc, mode: m, ...(m === 'Online' ? { date: today } : {}) })} />
                   </Field>
                   <Field label="Payment Date">
-                    <Input type="date" max={today} value={misc.date} onChange={(e) => setMisc({ ...misc, date: e.target.value })} />
+                    <Input type="date" max={today} value={misc.date} disabled={misc.mode === 'Online'}
+                      onChange={(e) => setMisc({ ...misc, date: e.target.value })} />
                   </Field>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-                  <Field label="UTR / Cheque / Ref No">
-                    <Input value={misc.refNo} onChange={(e) => setMisc({ ...misc, refNo: e.target.value })} placeholder="optional (UPI Ref / Cheque No)" />
-                  </Field>
                   <Field label="Remarks / Notes">
                     <Input value={misc.remarks} onChange={(e) => setMisc({ ...misc, remarks: e.target.value })} placeholder="optional note" />
                   </Field>
@@ -535,10 +685,12 @@ export default function CollectFee() {
                     type="button"
                     className="btn btn-primary"
                     style={{ padding: '10px 22px', fontSize: 14, fontWeight: 700, gap: 6 }}
-                    disabled={miscBusy || !misc.amount || Number(misc.amount) <= 0 || !misc.head.trim()}
+                    disabled={miscBusy || Boolean(online) || !misc.amount || Number(misc.amount) <= 0 || !misc.head.trim()}
                     onClick={submitMisc}
                   >
-                    {miscBusy ? 'Generating Receipt…' : `🖨️ Collect & Print Receipt (${RS(Number(misc.amount) || 0)})`}
+                    {miscBusy ? (misc.mode === 'Online' ? 'Opening gateway…' : 'Generating Receipt…')
+                      : misc.mode === 'Online' ? `🌐 Pay Online (${RS(Number(misc.amount) || 0)})`
+                        : `🖨️ Collect & Print Receipt (${RS(Number(misc.amount) || 0)})`}
                   </button>
                 </div>
               </div>
@@ -962,16 +1114,19 @@ export default function CollectFee() {
                 </div>
 
                 <Field label="Payment mode">
-                  <Select value={pay.mode} onChange={(e) => setPay({ ...pay, mode: e.target.value })}>{MODES.map((m) => <option key={m}>{m}</option>)}</Select>
+                  <ModePicker value={pay.mode} onlineEnabled={gatewayOn}
+                    onChange={(m) => setPay({ ...pay, mode: m, ...(m === 'Online' ? { date: today } : {}) })} />
                 </Field>
-                <div className="row" style={{ gap: 8 }}>
-                  <Field label="Date" style={{ flex: 1 }}><Input type="date" max={today} value={pay.date} onChange={(e) => setPay({ ...pay, date: e.target.value })} /></Field>
-                  <Field label="UTR / Cheque No" style={{ flex: 1 }}><Input value={pay.refNo} onChange={(e) => setPay({ ...pay, refNo: e.target.value })} placeholder="optional" /></Field>
-                </div>
+                <Field label="Date">
+                  <Input type="date" max={today} value={pay.date} disabled={pay.mode === 'Online'}
+                    title={pay.mode === 'Online' ? 'Online payments are always dated today' : undefined}
+                    onChange={(e) => setPay({ ...pay, date: e.target.value })} />
+                </Field>
                 <Field label="Remarks"><Input value={pay.remarks} onChange={(e) => setPay({ ...pay, remarks: e.target.value })} placeholder="optional" /></Field>
-                <button type="button" className="btn btn-primary" disabled={busy || payableNow <= 0 || (effectiveIsPartial && (Number(partialAmount) <= 0 || Number(partialAmount) >= grandTotal))}
+                <button type="button" className="btn btn-primary" disabled={busy || Boolean(online) || payableNow <= 0 || (effectiveIsPartial && (Number(partialAmount) <= 0 || Number(partialAmount) >= grandTotal))}
                   style={{ justifyContent: 'center', padding: 10 }} onClick={submit}>
-                  {busy ? 'Saving…' : `Generate receipt (${RS(payableNow)})`}
+                  {busy ? (pay.mode === 'Online' ? 'Opening gateway…' : 'Saving…')
+                    : pay.mode === 'Online' ? `🌐 Pay online (${RS(payableNow)})` : `💵 Generate receipt (${RS(payableNow)})`}
                 </button>
               </div>
             )}

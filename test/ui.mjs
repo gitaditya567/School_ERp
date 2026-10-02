@@ -1,7 +1,7 @@
 /** Browser end-to-end test of the built React app served by the API. */
 import { chromium } from 'playwright';
 
-const BASE = process.env.UI_BASE || 'http://localhost:5000';
+const BASE = process.env.UI_BASE || 'http://localhost:8080';
 const G = '[32m'; const R = '[31m'; const B = '[1m'; const X = '[0m';
 
 let pass = 0; let fail = 0; const failed = [];

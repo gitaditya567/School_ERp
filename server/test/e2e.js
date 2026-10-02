@@ -10,7 +10,7 @@ import User from '../src/models/User.js';
 import FeeHead from '../src/models/FeeHead.js';
 import School from '../src/models/School.js';
 
-const BASE = process.env.TEST_BASE || `http://localhost:${process.env.PORT || 5000}/api`;
+const BASE = process.env.TEST_BASE || `http://localhost:${process.env.PORT || 8080}/api`;
 const HEADS = [
   ['Tuition Fee', 'tuition', 'recurring'], ['Admission Fee', 'admission', 'one-time'],
   ['Form / Prospectus', 'form', 'one-time'], ['Kit Charges', 'kit', 'one-time'],
@@ -275,7 +275,7 @@ async function main() {
   eq('pending rows', rows.length, 8);
   const instI = rows.find((x) => x.instNo === 'I');
   eq('instalment I balance', instI.balance, 23650);
-  eq('late fee suggested on the 5th', instI.suggestedLateFee, 200);
+  eq('late fee suggested on the 5th (148 days late → tier 3)', instI.suggestedLateFee, 500);
 
   r = await GET(`/fee/pending/${s1._id}?date=${YEAR}-04-05`, accountant);
   eq('no late fee inside the fee window', r.data.rows.find((x) => x.instNo === 'I').suggestedLateFee, 0);

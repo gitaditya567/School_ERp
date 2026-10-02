@@ -45,10 +45,11 @@ export const login = asyncHandler(async (req, res) => {
 /** GET /api/auth/me */
 export const me = asyncHandler(async (req, res) => {
   const school = await School.current();
-  await req.user.populate({ path: 'classId', select: 'name code' });
+  // Populate a fresh copy — req.user is the shared cached document, and populating it would break class scoping.
+  const user = await User.findById(req.user._id).populate({ path: 'classId', select: 'name code' });
   res.json({
     ok: true,
-    user: { ...req.user.toPublic(), className: req.user.classId?.name || null },
+    user: { ...user.toPublic(), className: user.classId?.name || null },
     role: publicRole(req.user.role),
     school,
   });
