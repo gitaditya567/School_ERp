@@ -15,11 +15,11 @@ import { ApiError } from './helpers.js';
 const IV = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 const keyCache = new Map();
 
-// URLs from the NDPS Transaction API (V6) and Requery API (V1.20) documents.
+// UAT URLs as confirmed by the NDPS integration team; production per the Transaction API (V6) / Requery API (V1.20) docs.
 const UAT = {
-  authUrl: 'https://paynetzuat.atomtech.in/otsv2/aipay/auth',
+  authUrl: 'https://paynetzuat.atomtech.in/ots/aipay/auth',
   cdnUrl: 'https://pgtest.atomtech.in/staticdata/ots/js/atomcheckout.js',
-  statusUrl: 'https://paynetzuat.atomtech.in/otsv2/aipay/payment/status',
+  statusUrl: 'https://paynetzuat.atomtech.in/ots/aipay/payment/status',
 };
 const PROD = {
   authUrl: 'https://payment.atomtech.in/otsv2/aipay/auth',
@@ -77,10 +77,10 @@ export function decrypt(hex, c = atomConfig()) {
 
 const hmac = (key, text) => crypto.createHmac('sha512', key).update(text).digest('hex');
 
-/** Headers for the otsv2 endpoints: Bearer base64(merchId:apiSecretKey). */
-function authHeaders(c) {
+/** The otsv2 endpoints also need Bearer base64(merchId:apiSecretKey); the ots ones do not. */
+function authHeaders(c, url) {
   const h = { 'content-type': 'application/x-www-form-urlencoded', 'cache-control': 'no-cache' };
-  if (c.apiSecretKey) h.authorization = `Bearer ${Buffer.from(`${c.merchId}:${c.apiSecretKey}`).toString('base64')}`;
+  if (c.apiSecretKey && url.includes('/otsv2/')) h.authorization = `Bearer ${Buffer.from(`${c.merchId}:${c.apiSecretKey}`).toString('base64')}`;
   return h;
 }
 
@@ -97,7 +97,7 @@ function readEncrypted(text, c) {
 
 async function post(url, body, c, what) {
   try {
-    const res = await fetch(url, { method: 'POST', headers: authHeaders(c), body, signal: AbortSignal.timeout(25000) });
+    const res = await fetch(url, { method: 'POST', headers: authHeaders(c, url), body, signal: AbortSignal.timeout(25000) });
     const text = await res.text();
     if (res.status === 401 || res.status === 403) {
       throw new ApiError(502, `Payment gateway refused the ${what} (${res.status}) — check ATOM_API_SECRET_KEY and the whitelisted IP.`);

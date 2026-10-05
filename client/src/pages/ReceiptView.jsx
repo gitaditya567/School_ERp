@@ -28,7 +28,7 @@ export default function ReceiptView({ id, onClose, onChanged }) {
   const handlePrint = (duplicate = false) => {
     if (!data) return;
     printReceiptSlip({
-      receipt: data.receipt,
+      receipt: { ...data.receipt, online: onlineDetails(data.receipt, data.online) },
       school: data.school,
       amountInWords: data.amountInWords,
       duplicate,
@@ -64,6 +64,7 @@ export default function ReceiptView({ id, onClose, onChanged }) {
 
   if (!data) return <Drawer title="Receipt" sub="Fee & Accounts" onClose={onClose}><Loading /></Drawer>;
   const { receipt: r, school, amountInWords } = data;
+  const online = onlineDetails(r, data.online);
 
   return (
     <Drawer title={`${r.type === 'misc' ? 'Misc Receipt' : 'Receipt'} ${r.receiptNo}`} sub={r.type === 'misc' ? `Other Fee · ${r.miscHead || 'General'}` : 'Fee & Accounts'} onClose={onClose} footer={footer}>
@@ -116,7 +117,7 @@ export default function ReceiptView({ id, onClose, onChanged }) {
           <div><span style={{ color: '#6A6076' }}>Class:</span> <b>{r.classId?.name}-{r.student?.section}</b></div>
           <div><span style={{ color: '#6A6076' }}>Father:</span> <b>{r.student?.father}</b></div>
           <div><span style={{ color: '#6A6076' }}>Session:</span> <b>{school.session || '—'}</b></div>
-          <div><span style={{ color: '#6A6076' }}>Mode:</span> <b>{r.mode}</b> <span className="mono" style={{ fontSize: 11, color: '#6A6076' }}>{r.refNo}</span></div>
+          <div><span style={{ color: '#6A6076' }}>Mode:</span> <b>{r.mode}</b>{!online && r.refNo && <span className="mono" style={{ fontSize: 11, color: '#6A6076' }}> {r.refNo}</span>}</div>
           {r.type === 'misc' && (
             <div style={{ gridColumn: '1 / -1', background: '#F6F2F7', padding: '6px 10px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
               <span style={{ color: '#6A6076' }}>Fee Purpose / Head:</span>
@@ -125,6 +126,20 @@ export default function ReceiptView({ id, onClose, onChanged }) {
             </div>
           )}
         </div>
+
+        {online && (
+          <div style={{ border: '1px solid #1E7A4C', background: '#EEF8F2', borderRadius: 6, padding: '8px 12px', margin: '0 0 14px', fontSize: 12.5 }}>
+            <div style={{ fontSize: 10, letterSpacing: '.1em', fontWeight: 700, color: '#1E7A4C', marginBottom: 6 }}>ONLINE PAYMENT DETAILS</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
+              <div><span style={{ color: '#6A6076' }}>Transaction Status:</span> <b style={{ color: '#1E7A4C' }}>{online.status}</b></div>
+              <div><span style={{ color: '#6A6076' }}>Transaction Amount:</span> <b className="mono">{RS(online.amount)}</b></div>
+              {online.merchTxnId && <div><span style={{ color: '#6A6076' }}>Merchant Txn ID:</span> <b className="mono">{online.merchTxnId}</b></div>}
+              <div><span style={{ color: '#6A6076' }}>Atom Txn ID:</span> <b className="mono">{online.atomTxnId || '—'}</b></div>
+              {online.bankTxnId && <div><span style={{ color: '#6A6076' }}>Bank Ref No:</span> <b className="mono">{online.bankTxnId}</b></div>}
+              {online.channel && <div><span style={{ color: '#6A6076' }}>Paid via:</span> <b>{online.channel}</b></div>}
+            </div>
+          </div>
+        )}
 
         {r.type === 'misc' ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -223,4 +238,12 @@ export default function ReceiptView({ id, onClose, onChanged }) {
       </div>
     </Drawer>
   );
+}
+
+/** Gateway details for an online receipt; older receipts only carry "atomTxnId / bankTxnId" in refNo. */
+function onlineDetails(r, fromServer) {
+  if (fromServer) return fromServer;
+  if (r.mode !== 'Online' || !r.refNo) return null;
+  const [atomTxnId, bankTxnId] = String(r.refNo).split('/').map((x) => x.trim());
+  return { status: r.cancelled?.at ? 'CANCELLED' : 'SUCCESS', amount: r.total, merchTxnId: '', atomTxnId, bankTxnId, channel: '' };
 }

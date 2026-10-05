@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Panel, Chip, Loading, Empty, Input, Field } from '../components/ui';
+import { Panel, Chip, Loading, Empty, Input, Field, Drawer } from '../components/ui';
 import ReceiptView from './ReceiptView';
 import { RS, fmtDate, initials, statusOf } from '../lib/format';
 
@@ -132,6 +132,7 @@ export default function CollectFee() {
   const [miscBusy, setMiscBusy] = useState(false);
   const [gatewayOn, setGatewayOn] = useState(false);
   const [online, setOnline] = useState(null); // { order } while the Atom checkout is open
+  const [payResult, setPayResult] = useState(null); // failed / pending / unreconciled online payment to show
 
   useEffect(() => { document.title = 'Collect Fee'; }, []);
   useEffect(() => { api.get('/payments/config').then((d) => setGatewayOn(Boolean(d.enabled))).catch(() => {}); }, []);
@@ -190,10 +191,10 @@ export default function CollectFee() {
       // Refresh in place — blanking the page would hide the receipt drawer.
       setSel({}); setIsPartial(false); setPartialAmount('');
       api.get(`/fee/pending/${studentId}`, { params: { date: pay.date } }).then(setData).catch(shout);
-    } else if (order.status === 'unreconciled') {
-      shout(order.message || 'Payment received but the receipt could not be created — check Online Payments.');
     } else {
-      toast(order.message || 'Online payment was not completed.');
+      setPayResult(order);
+      if (order.status === 'unreconciled') shout(order.message || 'Payment received but the receipt could not be created.');
+      else toast(order.message || 'Online payment was not completed.');
     }
   };
 
@@ -1134,6 +1135,27 @@ export default function CollectFee() {
         </div>
       )}
 
+      {payResult && (
+        <Drawer title="Online Payment Result" sub={payResult.status === 'failed' ? 'Payment not completed' : 'Needs attention'} onClose={() => setPayResult(null)}
+          footer={<><div style={{ flex: 1 }} /><button type="button" className="btn btn-primary" onClick={() => setPayResult(null)}>Close</button></>}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13.5 }}>
+            {[
+              ['Transaction Status', payResult.status === 'failed' ? 'FAILED' : payResult.status === 'unreconciled' ? 'PAID – RECEIPT PENDING' : 'PENDING'],
+              ['Transaction Amount', RS(payResult.amount)],
+              ['Merchant Txn ID', payResult.merchTxnId],
+              ['Atom Txn ID', payResult.atomTxnId || '—'],
+              ['Date & Time', new Date(payResult.createdAt).toLocaleString('en-IN')],
+              ['Message', payResult.message || '—'],
+            ].map(([k, v]) => (
+              <div key={k} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', paddingBottom: 8, gap: 12 }}>
+                <span className="muted">{k}</span>
+                <b className={k.includes('ID') || k.includes('Amount') ? 'mono' : undefined}
+                  style={k === 'Transaction Status' ? { color: payResult.status === 'failed' ? 'var(--crit)' : 'var(--warn)' } : undefined}>{v}</b>
+              </div>
+            ))}
+          </div>
+        </Drawer>
+      )}
       {receiptId && <ReceiptView id={receiptId} onClose={() => setReceiptId(null)} onChanged={loadStudent} />}
     </div>
   );

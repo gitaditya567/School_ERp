@@ -157,7 +157,13 @@ export function renderReceiptHTML({ receipt: r, school = {}, amountInWords = '',
         <div><span style="color: #666;">Class:</span> <b>${r.classId?.name || '—'}-${r.student?.section || 'A'}</b></div>
         <div><span style="color: #666;">Father:</span> <b>${r.student?.father || '—'}</b></div>
         <div><span style="color: #666;">Session:</span> <b>${school.session || '—'}</b></div>
-        <div><span style="color: #666;">Payment Mode:</span> <b>${r.mode || 'Cash'}</b> ${r.refNo ? `<span class="mono" style="font-size: 10.5px; color: #666;">(${r.refNo})</span>` : ''}</div>
+        <div><span style="color: #666;">Payment Mode:</span> <b>${r.mode || 'Cash'}</b> ${r.refNo && !r.online ? `<span class="mono" style="font-size: 10.5px; color: #666;">(${r.refNo})</span>` : ''}</div>
+        ${r.online ? `
+        <div><span style="color: #666;">Transaction Status:</span> <b style="color: #1E7A4C;">${r.online.status}</b></div>
+        <div><span style="color: #666;">Transaction Amount:</span> <b class="mono">Rs. ${Number(r.online.amount).toFixed(2)}</b></div>
+        ${r.online.merchTxnId ? `<div><span style="color: #666;">Merchant Txn ID:</span> <b class="mono">${r.online.merchTxnId}</b></div>` : ''}
+        <div><span style="color: #666;">Atom Txn ID:</span> <b class="mono">${r.online.atomTxnId || '—'}</b></div>
+        ${r.online.bankTxnId ? `<div><span style="color: #666;">Bank Ref No:</span> <b class="mono">${r.online.bankTxnId}</b></div>` : ''}` : ''}
       </div>
 
       <!-- Items Table -->

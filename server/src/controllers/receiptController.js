@@ -3,6 +3,7 @@ import Ledger from '../models/Ledger.js';
 import Concession from '../models/Concession.js';
 import School from '../models/School.js';
 import Counter from '../models/Counter.js';
+import OnlinePayment from '../models/OnlinePayment.js';
 import { asyncHandler, ApiError, audit, dayRange, amountInWords } from '../utils/helpers.js';
 import { withTransaction } from '../config/db.js';
 
@@ -76,7 +77,14 @@ export const get = asyncHandler(async (req, res) => {
     }
   }
 
-  res.json({ ok: true, receipt, amountInWords: amountInWords(receipt.total), school });
+  // Gateway details for online receipts (NDPS requires txn ID, status and amount on the receipt).
+  const op = receipt.mode === 'Online' ? await OnlinePayment.findOne({ receipt: receipt._id }).lean() : null;
+  const online = op ? {
+    merchTxnId: op.merchTxnId, atomTxnId: op.atomTxnId, bankTxnId: op.bankTxnId, channel: op.channel,
+    status: op.status === 'success' ? 'SUCCESS' : op.status.toUpperCase(), statusCode: op.statusCode, amount: op.amount,
+  } : null;
+
+  res.json({ ok: true, receipt, online, amountInWords: amountInWords(receipt.total), school });
 });
 
 /** POST /api/receipts/:id/cancel — reverses the ledger, keeps the number burnt. */
