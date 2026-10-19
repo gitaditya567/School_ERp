@@ -89,8 +89,10 @@ export const istStamp = (d = new Date()) => new Date(new Date(d).getTime() + 5.5
 
 /** Pulls `encData` out of an NDPS reply ("merchId=..&encData=.." or JSON) and decrypts it. */
 function readEncrypted(text, c) {
-  let encData = new URLSearchParams(text).get('encData');
-  if (!encData) { try { encData = JSON.parse(text).encData; } catch { /* not JSON */ } }
+  const raw = String(text).trim();
+  // The UAT status API replies with the bare hex cipher text, not "encData=…".
+  let encData = /^[0-9A-Fa-f]+$/.test(raw) && raw.length % 32 === 0 ? raw : new URLSearchParams(raw).get('encData');
+  if (!encData) { try { encData = JSON.parse(raw).encData; } catch { /* not JSON */ } }
   if (!encData) return null;
   return JSON.parse(decrypt(encData.trim(), c));
 }
@@ -195,8 +197,9 @@ export async function requery({ merchTxnId, amount, txnDate }) {
       payDetails: {
         amount: amt,
         txnCurrency: 'INR',
-        // merchId + password + merchTxnId + amount + txnCurrency + api, keyed with the request hash key
-        signature: hmac(c.reqHashKey, `${c.merchId}${c.password}${merchTxnId}${amt}INRTXNVERIFICATION`),
+        // AIPAY: merchId + merchTxnId + amount + txnCurrency, keyed with the request hash key
+        // (verified against NDPS UAT; the OTS recipe with password + api is rejected as "Signature mismatched")
+        signature: hmac(c.reqHashKey, `${c.merchId}${merchTxnId}${amt}INR`),
       },
     },
   };

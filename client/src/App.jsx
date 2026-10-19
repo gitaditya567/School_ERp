@@ -16,6 +16,7 @@ import Concessions from './pages/Concessions';
 import DayBook from './pages/DayBook';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Policies from './pages/Policies';
 
 function Guard({ view, children }) {
   const { user, canView, loading } = useAuth();
@@ -32,6 +33,11 @@ function Shell() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Public pages (no login) required by the payment gateway */}
+      <Route path="/privacy-policy" element={<Policies page="privacy" />} />
+      <Route path="/terms" element={<Policies page="terms" />} />
+      <Route path="/refund-policy" element={<Policies page="refund" />} />
+      <Route path="/contact" element={<Policies page="contact" />} />
       <Route element={user ? <Layout /> : <Navigate to="/login" replace />}>
         <Route index element={<Guard view="dashboard"><Dashboard /></Guard>} />
         <Route path="admission" element={<Guard view="admission"><NewAdmission /></Guard>} />

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
+import { POLICY_LINKS } from './Policies';
 import { useAuth } from '../context/AuthContext';
 import { Field, Input } from '../components/ui';
 
@@ -92,6 +93,9 @@ export default function Login() {
           )}
 
           <div className="login-copy">
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 12px', marginBottom: 8 }}>
+              {POLICY_LINKS.map((p) => <Link key={p.path} to={p.path}>{p.title}</Link>)}
+            </div>
             © {new Date().getFullYear()} Developed by{' '}
             <a href="https://twinscloud.com" target="_blank" rel="noopener noreferrer">
               <strong>Twinscloud Pvt. Ltd.</strong>

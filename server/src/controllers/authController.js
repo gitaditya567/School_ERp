@@ -8,7 +8,15 @@ import { publicRole, ROLES, PERMISSIONS, PERMISSION_LABELS } from '../config/rol
 export const status = asyncHandler(async (_req, res) => {
   const count = await User.countDocuments();
   const school = await School.current();
-  res.json({ ok: true, needsSetup: count === 0, school: { name: school.name, logo: school.logo, branch: school.branch } });
+  // Public contact details are also shown on the policy pages the payment gateway requires.
+  res.json({
+    ok: true,
+    needsSetup: count === 0,
+    school: {
+      name: school.name, logo: school.logo, branch: school.branch,
+      phone: school.phone, email: school.email, address: school.address, refundNote: school.refundNote,
+    },
+  });
 });
 
 /** POST /api/auth/bootstrap — creates the first Principal. Refuses once any user exists. */
