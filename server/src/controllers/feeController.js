@@ -20,7 +20,9 @@ export const pending = asyncHandler(async (req, res) => {
   assertClassScope(req, student.classId._id);
 
   const school = await School.current();
-  const payDate = req.query.date ? new Date(req.query.date) : new Date();
+  // Without a date, "today" is the Indian calendar day (the server clock runs on UTC).
+  const istToday = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+  const payDate = new Date(req.query.date || istToday);
   if (Number.isNaN(payDate.getTime())) throw new ApiError(422, 'Enter a valid payment date.');
 
   // Fee-head breakdown of every instalment, so the collect screen can show what the gross is made of.
@@ -70,16 +72,23 @@ export const pending = asyncHandler(async (req, res) => {
  * body: { studentId, date, mode, refNo, remarks, lines:[{ledgerId, discount, discountReason, lateFee, payingAmount}] }
  */
 export const collect = asyncHandler(async (req, res) => {
-  assertNotOnline(req.body.mode);
+  assertNotOnline(req.body.mode, req.body.refNo);
   const ctx = await prepareCollection(req, req.body);
   const receipt = await commitCollection(req, ctx, req.body);
   res.status(201).json(await receiptResponse(receipt._id, ctx.total, ctx.school));
 });
 
-/** "Online" receipts are only ever created by the payment gateway callback, never typed in by hand. */
-function assertNotOnline(mode) {
-  if (String(mode || '').trim().toLowerCase() === 'online') {
+/**
+ * "Online" receipts are only ever created by the payment gateway callback, never typed in by hand.
+ * Money already received in the school account is recorded as "Online (Direct)" and must carry its UTR.
+ */
+function assertNotOnline(mode, refNo) {
+  const m = String(mode || '').trim().toLowerCase();
+  if (m === 'online') {
     throw new ApiError(422, 'Online payments are recorded automatically by the payment gateway.');
+  }
+  if (m === 'online (direct)' && !String(refNo || '').trim()) {
+    throw new ApiError(422, 'Enter the UTR / transaction number of the online payment.');
   }
 }
 
@@ -273,7 +282,7 @@ export const getNextReceiptNo = asyncHandler(async (_req, res) => {
  * body: { studentId, amount, head, date, mode, refNo, remarks }
  */
 export const collectMisc = asyncHandler(async (req, res) => {
-  assertNotOnline(req.body.mode);
+  assertNotOnline(req.body.mode, req.body.refNo);
   const ctx = await prepareMisc(req, req.body);
   const receipt = await commitMisc(req, ctx, req.body);
   res.status(201).json(await receiptResponse(receipt._id, ctx.numAmount, ctx.school));

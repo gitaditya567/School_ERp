@@ -1,7 +1,7 @@
 import Ledger from '../models/Ledger.js';
 import Receipt from '../models/Receipt.js';
 import School from '../models/School.js';
-import { asyncHandler, ApiError, startOfMonth, endOfMonth, dayRange, balanceOf, monthKey } from '../utils/helpers.js';
+import { asyncHandler, ApiError, startOfMonth, endOfMonth, dayRange, balanceOf, monthKey, lateFeeRuleText } from '../utils/helpers.js';
 
 const scopeFilter = (req) => (req.scopeClass ? { classId: req.scopeClass } : (req.query.classId ? { classId: req.query.classId } : {}));
 
@@ -22,7 +22,7 @@ export const monthlyDue = asyncHandler(async (req, res) => {
     ok: true,
     month,
     school,
-    note: `${school.feeWindow} fee window${school.lateFeeAmount ? ` · ${school.lateFeeAmount} late fee after the ${school.lateFeeFrom}th` : ''}`,
+    note: `${school.feeWindow} fee window · ${lateFeeRuleText(school)}`,
     rows: due.map((r) => ({
       admissionNo: r.student?.admissionNo,
       student: r.student?.name,

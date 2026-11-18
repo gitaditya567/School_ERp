@@ -5,9 +5,37 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Panel, Chip, Loading, Empty, Input, Field, Drawer } from '../components/ui';
 import ReceiptView from './ReceiptView';
+import { useTableFilter, FilterHead } from '../components/TableFilter';
 import { RS, fmtDate, initials, statusOf } from '../lib/format';
 
-const PAY_MODES = [{ id: 'Cash', label: 'Cash', icon: '💵' }, { id: 'Online', label: 'Online', icon: '🌐' }];
+const PICK_COLUMNS = [
+  { key: 'adm', label: 'Adm. No', value: (s) => s.admissionNo },
+  { key: 'name', label: 'Student', value: (s) => s.name },
+  { key: 'class', label: 'Class', filter: 'select', value: (s) => s.classId?.name },
+  { key: 'father', label: 'Father', value: (s) => s.father },
+  { key: 'due', label: 'Outstanding', className: 't-right', value: (s) => s.totals?.outstanding || 0, placeholder: '>0' },
+  { key: 'status', label: 'Status', filter: 'select', value: (s) => (s.totals?.overdue > 0 ? 'Overdue' : s.totals?.outstanding > 0 ? 'Due' : 'Clear') },
+  { key: 'actions', label: '', filter: 'none' },
+];
+const receiptStatus = (r) => (r.cancelled?.at ? 'Cancelled' : r.type === 'misc' ? 'Other Fee' : 'Paid');
+const HISTORY_COLUMNS = [
+  { key: 'no', label: 'Receipt No', value: (r) => r.receiptNo, sortValue: (r) => r.seq },
+  { key: 'date', label: 'Date', value: (r) => fmtDate(r.date), sortValue: (r) => new Date(r.date).getTime() },
+  { key: 'what', label: 'Type / Instalments', value: (r) => (r.type === 'misc' ? r.miscHead || 'Miscellaneous Fee' : (r.lines || []).map((l) => `${l.instNo} (${l.month})`).join(' ')) },
+  { key: 'mode', label: 'Mode / Ref', value: (r) => [r.mode, r.refNo].filter(Boolean).join(' ') },
+  { key: 'amount', label: 'Amount Paid', className: 't-right', value: (r) => r.total, placeholder: '>1000' },
+  { key: 'status', label: 'Status', filter: 'select', value: receiptStatus },
+  { key: 'actions', label: '', filter: 'none' },
+];
+
+// "Online" goes through the payment gateway; "Online (Direct)" only records money already received
+// in the school account (UPI / bank transfer) and needs its UTR, so it is never mistaken for a gateway receipt.
+const DIRECT = 'Online (Direct)';
+const PAY_MODES = [
+  { id: 'Cash', label: 'Cash', icon: '💵' },
+  { id: 'Online', label: 'Online', icon: '🌐', hint: 'Opens the payment gateway' },
+  { id: DIRECT, label: 'Online – Receipt only', icon: '🧾', hint: 'Payment already received in the school account (UPI / bank). Enter the UTR; no gateway.' },
+];
 const REASONS = ['Sibling Concession', 'Staff Ward', 'Full Session Advance', 'Merit Scholarship',
   'Financial Hardship', 'Management Approval', 'Fee Card Correction'];
 const MISC_CATEGORIES = [
@@ -56,13 +84,13 @@ function loadAtom(src) {
 
 function ModePicker({ value, onChange, onlineEnabled }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
       {PAY_MODES.map((m) => {
         const off = m.id === 'Online' && !onlineEnabled;
         const on = value === m.id;
         return (
           <button key={m.id} type="button" disabled={off} onClick={() => onChange(m.id)}
-            title={off ? 'Online payment is not configured yet (Atom keys missing on the server)' : undefined}
+            title={off ? 'Online payment is not configured yet (Atom keys missing on the server)' : m.hint}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 12px',
               borderRadius: 8, fontSize: 13.5, fontWeight: on ? 700 : 500,
@@ -110,6 +138,7 @@ export default function CollectFee() {
 
   const [list, setList] = useState(null);
   const [search, setSearch] = useState('');
+  const pickTf = useTableFilter(list, PICK_COLUMNS, { sort: { key: 'adm', dir: 1 } });
   const [data, setData] = useState(null);
   const [sel, setSel] = useState({});
   const [pay, setPay] = useState({ date: today, mode: 'Cash', refNo: '', remarks: '' });
@@ -133,6 +162,7 @@ export default function CollectFee() {
   const [gatewayOn, setGatewayOn] = useState(false);
   const [online, setOnline] = useState(null); // { order } while the Atom checkout is open
   const [payResult, setPayResult] = useState(null); // failed / pending / unreconciled online payment to show
+  const histTf = useTableFilter(data?.receipts, HISTORY_COLUMNS);
 
   useEffect(() => { document.title = 'Collect Fee'; }, []);
   useEffect(() => { api.get('/payments/config').then((d) => setGatewayOn(Boolean(d.enabled))).catch(() => {}); }, []);
@@ -305,10 +335,10 @@ export default function CollectFee() {
           {!list ? <Loading /> : (
             <div className="tbl-wrap">
               <table>
-                <thead><tr><th>Adm. No</th><th>Student</th><th>Class</th><th>Father</th><th className="t-right">Outstanding</th><th>Status</th><th /></tr></thead>
+                <FilterHead columns={PICK_COLUMNS} tf={pickTf} />
                 <tbody>
-                  {list.length === 0 && <tr><td colSpan={7}><Empty>No matching student.</Empty></td></tr>}
-                  {list.map((s) => (
+                  {pickTf.rows.length === 0 && <tr><td colSpan={7}><Empty>No matching student.</Empty></td></tr>}
+                  {pickTf.rows.map((s) => (
                     <tr key={s._id} className="clickable" onClick={() => {
                       const nextP = { student: s._id };
                       if (mode === 'misc') nextP.mode = 'misc';
@@ -389,6 +419,10 @@ export default function CollectFee() {
   const payableNow = effectiveIsPartial ? Math.max(0, Math.min(grandTotal, Number(partialAmount) || 0)) : grandTotal;
 
   const submit = async () => {
+    if (pay.mode === DIRECT && !pay.refNo.trim()) {
+      toast('Enter the UTR / transaction number of the online payment.');
+      return;
+    }
     if (pay.mode === 'Online') {
       if (effectiveIsPartial) {
         const amt = Number(partialAmount) || 0;
@@ -430,6 +464,7 @@ export default function CollectFee() {
       setReceiptId(res.receipt._id);
       setIsPartial(false);
       setPartialAmount('');
+      setPay((p) => ({ ...p, refNo: '' })); // a UTR belongs to one receipt only
       loadStudent();
     } catch (e) { shout(e); } finally { setBusy(false); }
   };
@@ -444,6 +479,10 @@ export default function CollectFee() {
     const amt = Number(misc.amount);
     if (!amt || amt <= 0) {
       toast('Please enter a valid amount greater than zero.');
+      return;
+    }
+    if (misc.mode === DIRECT && !misc.refNo.trim()) {
+      toast('Enter the UTR / transaction number of the online payment.');
       return;
     }
     if (misc.mode === 'Online') {
@@ -648,11 +687,16 @@ export default function CollectFee() {
                 </div>
 
                 {/* Payment Details */}
+                <Field label="Payment Mode">
+                  <ModePicker value={misc.mode} onlineEnabled={gatewayOn}
+                    onChange={(m) => setMisc({ ...misc, mode: m, ...(m === 'Online' ? { date: today } : {}) })} />
+                </Field>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-                  <Field label="Payment Mode">
-                    <ModePicker value={misc.mode} onlineEnabled={gatewayOn}
-                      onChange={(m) => setMisc({ ...misc, mode: m, ...(m === 'Online' ? { date: today } : {}) })} />
-                  </Field>
+                  {misc.mode === DIRECT && (
+                    <Field label="UTR / Transaction no. *">
+                      <Input value={misc.refNo} onChange={(e) => setMisc({ ...misc, refNo: e.target.value })} placeholder="UPI ref / bank UTR" />
+                    </Field>
+                  )}
                   <Field label="Payment Date">
                     <Input type="date" max={today} value={misc.date} disabled={misc.mode === 'Online'}
                       onChange={(e) => setMisc({ ...misc, date: e.target.value })} />
@@ -686,12 +730,13 @@ export default function CollectFee() {
                     type="button"
                     className="btn btn-primary"
                     style={{ padding: '10px 22px', fontSize: 14, fontWeight: 700, gap: 6 }}
-                    disabled={miscBusy || Boolean(online) || !misc.amount || Number(misc.amount) <= 0 || !misc.head.trim()}
+                    disabled={miscBusy || Boolean(online) || !misc.amount || Number(misc.amount) <= 0 || !misc.head.trim() || (misc.mode === DIRECT && !misc.refNo.trim())}
                     onClick={submitMisc}
                   >
                     {miscBusy ? (misc.mode === 'Online' ? 'Opening gateway…' : 'Generating Receipt…')
                       : misc.mode === 'Online' ? `🌐 Pay Online (${RS(Number(misc.amount) || 0)})`
-                        : `🖨️ Collect & Print Receipt (${RS(Number(misc.amount) || 0)})`}
+                        : misc.mode === DIRECT ? `🧾 Generate Receipt (${RS(Number(misc.amount) || 0)})`
+                          : `🖨️ Collect & Print Receipt (${RS(Number(misc.amount) || 0)})`}
                   </button>
                 </div>
               </div>
@@ -705,22 +750,12 @@ export default function CollectFee() {
             >
               <div className="tbl-wrap">
                 <table>
-                  <thead>
-                    <tr>
-                      <th>Receipt No</th>
-                      <th>Date</th>
-                      <th>Type / Particulars</th>
-                      <th>Mode / Ref</th>
-                      <th className="t-right">Amount Paid</th>
-                      <th>Status</th>
-                      <th />
-                    </tr>
-                  </thead>
+                  <FilterHead columns={HISTORY_COLUMNS} tf={histTf} />
                   <tbody>
-                    {(!receipts || receipts.length === 0) && (
+                    {histTf.rows.length === 0 && (
                       <tr><td colSpan={7}><Empty>No previous fee receipts found for this student.</Empty></td></tr>
                     )}
-                    {receipts?.map((r) => (
+                    {histTf.rows.map((r) => (
                       <tr key={r._id} className="clickable" onClick={() => setReceiptId(r._id)}>
                         <td>
                           <b className="mono tiny" style={{ color: 'var(--brand)' }}>{r.receiptNo}</b>
@@ -931,22 +966,12 @@ export default function CollectFee() {
               sub={receipts?.length ? `${receipts.length} transaction${receipts.length === 1 ? '' : 's'} recorded` : 'No past transactions for this student'}>
               <div className="tbl-wrap">
                 <table>
-                  <thead>
-                    <tr>
-                      <th>Receipt No</th>
-                      <th>Date</th>
-                      <th>Type / Instalments</th>
-                      <th>Mode / Ref</th>
-                      <th className="t-right">Amount Paid</th>
-                      <th>Status</th>
-                      <th />
-                    </tr>
-                  </thead>
+                  <FilterHead columns={HISTORY_COLUMNS} tf={histTf} />
                   <tbody>
-                    {(!receipts || receipts.length === 0) && (
+                    {histTf.rows.length === 0 && (
                       <tr><td colSpan={7}><Empty>No previous fee receipts found for this student.</Empty></td></tr>
                     )}
-                    {receipts?.map((r) => (
+                    {histTf.rows.map((r) => (
                       <tr key={r._id} className="clickable" onClick={() => setReceiptId(r._id)}>
                         <td>
                           <b className="mono tiny" style={{ color: 'var(--brand)' }}>{r.receiptNo}</b>
@@ -1123,11 +1148,17 @@ export default function CollectFee() {
                     title={pay.mode === 'Online' ? 'Online payments are always dated today' : undefined}
                     onChange={(e) => setPay({ ...pay, date: e.target.value })} />
                 </Field>
+                {pay.mode === DIRECT && (
+                  <Field label="UTR / Transaction no. *">
+                    <Input value={pay.refNo} onChange={(e) => setPay({ ...pay, refNo: e.target.value })} placeholder="UPI ref / bank UTR" />
+                  </Field>
+                )}
                 <Field label="Remarks"><Input value={pay.remarks} onChange={(e) => setPay({ ...pay, remarks: e.target.value })} placeholder="optional" /></Field>
-                <button type="button" className="btn btn-primary" disabled={busy || Boolean(online) || payableNow <= 0 || (effectiveIsPartial && (Number(partialAmount) <= 0 || Number(partialAmount) >= grandTotal))}
+                <button type="button" className="btn btn-primary" disabled={busy || Boolean(online) || payableNow <= 0 || (effectiveIsPartial && (Number(partialAmount) <= 0 || Number(partialAmount) >= grandTotal)) || (pay.mode === DIRECT && !pay.refNo.trim())}
                   style={{ justifyContent: 'center', padding: 10 }} onClick={submit}>
                   {busy ? (pay.mode === 'Online' ? 'Opening gateway…' : 'Saving…')
-                    : pay.mode === 'Online' ? `🌐 Pay online (${RS(payableNow)})` : `💵 Generate receipt (${RS(payableNow)})`}
+                    : pay.mode === 'Online' ? `🌐 Pay online (${RS(payableNow)})`
+                      : pay.mode === DIRECT ? `🧾 Generate receipt (${RS(payableNow)})` : `💵 Generate receipt (${RS(payableNow)})`}
                 </button>
               </div>
             )}

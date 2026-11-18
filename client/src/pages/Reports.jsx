@@ -6,6 +6,9 @@ import { Panel, Chip, Loading, ErrorBox, Empty, Input, Select } from '../compone
 import { RS, fmtDate, monthName, downloadCSV } from '../lib/format';
 
 import PendingFeeSlipModal, { printBulkSlips } from '../components/PendingFeeSlipModal';
+import { useTableFilter, FilterHead, FilterCount } from '../components/TableFilter';
+
+const SELECT_HEADS = new Set(['Class', 'Instalment']);
 
 const REPORTS = [
   { key: 'monthly-due', title: 'Monthly Due Report', desc: 'Which student owes how much, in a chosen month' },
@@ -42,6 +45,7 @@ export default function Reports() {
         num: [false, false, false, false, false, false, false, true],
         rows: data.rows.map((r) => [r.admissionNo, r.student, r.className, r.father, r.phone, r.instNo, fmtDate(r.dueDate), r.balance]),
         ids: data.rows.map((r) => r.studentId),
+        sortBy: { 6: (r) => new Date(r.dueDate).getTime() },
         footLabel: `Total due for ${monthName(f.month)}`,
       };
     }
@@ -51,6 +55,7 @@ export default function Reports() {
         num: [false, true, true, true, true, true],
         rows: data.rows.map((r) => [fmtDate(r.date), r.receipts, r.gross, r.discount, r.lateFee, r.total]),
         ids: [],
+        sortBy: { 0: (r) => new Date(r.date).getTime() },
         footLabel: 'Total collection',
         plain: [1],
       };
@@ -63,6 +68,26 @@ export default function Reports() {
       footLabel: 'Pending carry forward',
     };
   })();
+
+  // One item per row so filtering/sorting keeps each row's student link and source record together.
+  const items = table ? table.rows.map((cells, i) => ({ cells, id: table.ids[i], src: data.rows[i] })) : null;
+  const columns = table ? [
+    ...table.head.map((h, j) => ({
+      key: `c${j}`,
+      label: h,
+      className: table.num[j] ? 't-right' : '',
+      filter: SELECT_HEADS.has(h) ? 'select' : 'text',
+      value: (it) => it.cells[j],
+      sortValue: table.sortBy?.[j] ? (it) => table.sortBy[j](it.src) : undefined,
+      placeholder: table.num[j] ? '>0' : undefined,
+    })),
+    ...(key === 'monthly-due' ? [{ key: 'slip', label: 'Notice Slip', className: 't-right', filter: 'none' }] : []),
+  ] : [];
+  const tf = useTableFilter(items, columns);
+  useEffect(() => { tf.clear(); }, [key]); // filters belong to one report's columns
+  const shown = tf.rows;
+  const lastCol = table ? table.head.length - 1 : 0;
+  const footTotal = tf.active ? shown.reduce((t, it) => t + (Number(it.cells[lastCol]) || 0), 0) : data?.total;
 
   return (
     <div className="stack">
@@ -90,17 +115,17 @@ export default function Reports() {
               </Select>
             )}
             {can('export') && table?.rows?.length > 0 && (
-              <button type="button" className="btn btn-sm" onClick={() => downloadCSV(`${key}.csv`, table.head, table.rows)}>Export CSV</button>
+              <button type="button" className="btn btn-sm" onClick={() => downloadCSV(`${key}.csv`, table.head, shown.map((it) => it.cells))}>Export CSV</button>
             )}
-            {key === 'monthly-due' && data?.rows?.length > 0 && (
+            {key === 'monthly-due' && shown.length > 0 && (
               <button
                 type="button"
                 className="btn btn-sm btn-primary"
                 style={{ display: 'flex', alignItems: 'center', gap: 5 }}
-                onClick={() => printBulkSlips({ rows: data.rows, school: data.school })}
+                onClick={() => printBulkSlips({ rows: shown.map((it) => it.src), school: data.school })}
                 title="Bulk print pending fee notices for all students in this report"
               >
-                <span>🖨️</span> Print All Slips ({data.rows.length})
+                <span>🖨️</span> Print All Slips ({shown.length})
               </button>
             )}
             <button type="button" className="btn btn-sm" onClick={() => window.print()}>Print</button>
@@ -110,24 +135,20 @@ export default function Reports() {
           <b>{meta.title}</b><span className="tiny muted">{meta.desc}</span>
           <div style={{ flex: 1 }} />
           {data?.note && <Chip tone="due">{data.note}</Chip>}
+          <FilterCount tf={tf} />
           <span className="tag">{data ? `${data.rows.length} rows` : '…'}</span>
         </div>
 
         {error ? <ErrorBox error={error} /> : !data ? <Loading /> : (
           <div className="tbl-wrap">
             <table>
-              <thead>
-                <tr>
-                  {table.head.map((h, i) => <th key={h} className={table.num[i] ? 't-right' : ''}>{h}</th>)}
-                  {key === 'monthly-due' && <th className="t-right">Notice Slip</th>}
-                </tr>
-              </thead>
+              <FilterHead columns={columns} tf={tf} />
               <tbody>
-                {table.rows.length === 0 && <tr><td colSpan={table.head.length + (key === 'monthly-due' ? 1 : 0)}><Empty>No data for this filter.</Empty></td></tr>}
-                {table.rows.map((row, i) => (
+                {shown.length === 0 && <tr><td colSpan={columns.length}><Empty>No data for this filter.</Empty></td></tr>}
+                {shown.map((it, i) => (
                   // eslint-disable-next-line react/no-array-index-key
-                  <tr key={i} className={table.ids[i] ? 'clickable' : ''} onClick={() => table.ids[i] && nav(`/students/${table.ids[i]}`)}>
-                    {row.map((cell, j) => (
+                  <tr key={i} className={it.id ? 'clickable' : ''} onClick={() => it.id && nav(`/students/${it.id}`)}>
+                    {it.cells.map((cell, j) => (
                       // eslint-disable-next-line react/no-array-index-key
                       <td key={j} className={table.num[j] ? 'num' : ''}>
                         {table.num[j] && !(table.plain || []).includes(j) ? RS(cell) : cell}
@@ -148,7 +169,7 @@ export default function Reports() {
                             color: 'var(--brand)',
                             fontWeight: 600,
                           }}
-                          onClick={() => setActiveSlip(data.rows[i])}
+                          onClick={() => setActiveSlip(it.src)}
                           title="View and print pending fee information slip"
                         >
                           <span>📄</span> View Slip
@@ -162,7 +183,7 @@ export default function Reports() {
                 <tfoot>
                   <tr style={{ background: 'var(--surface-2)' }}>
                     <td colSpan={table.head.length - 1} style={{ fontWeight: 700 }}>{table.footLabel}</td>
-                    <td className="num" style={{ fontWeight: 700, fontSize: 15 }}>{RS(data.total)}</td>
+                    <td className="num" style={{ fontWeight: 700, fontSize: 15 }}>{RS(footTotal)}</td>
                     {key === 'monthly-due' && <td />}
                   </tr>
                 </tfoot>

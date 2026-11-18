@@ -6,6 +6,20 @@ import { useToast } from '../context/ToastContext';
 import { Panel, Chip, Loading, ErrorBox, Empty, Input, Select, Confirm } from '../components/ui';
 import { RS, fmtDate, downloadCSV, initials } from '../lib/format';
 import StudentDocumentModal from '../components/StudentDocumentModal';
+import { useTableFilter, FilterHead, FilterCount } from '../components/TableFilter';
+
+const docCount = (s) => (s.birthCertificateSubmitted ? 1 : 0) + (s.fatherAadhaarSubmitted ? 1 : 0) + (s.motherAadhaarSubmitted ? 1 : 0);
+const COLUMNS = [
+  { key: 'adm', label: 'Adm. No', value: (s) => s.admissionNo },
+  { key: 'name', label: 'Student', value: (s) => s.name },
+  { key: 'class', label: 'Class', filter: 'select', value: (s) => `${s.classId?.name || ''}-${s.section || ''}` },
+  { key: 'father', label: 'Father / Guardian', value: (s) => s.father },
+  { key: 'mother', label: 'Mother Name', value: (s) => s.mother },
+  { key: 'contact', label: 'Contact', value: (s) => [s.phone, s.alternatePhone].filter(Boolean).join(' ') },
+  { key: 'address', label: 'Address', value: (s) => s.address },
+  { key: 'docs', label: 'Documents', filter: 'select', value: (s) => (docCount(s) === 3 ? 'Submitted (3/3)' : `Pending (${docCount(s)}/3)`) },
+  { key: 'actions', label: '', filter: 'none' },
+];
 
 export default function Students() {
   const { can, user } = useAuth();
@@ -18,6 +32,7 @@ export default function Students() {
   const [studentToDelete, setStudentToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [selectedDocStudent, setSelectedDocStudent] = useState(null);
+  const tf = useTableFilter(rows, COLUMNS, { sort: { key: 'adm', dir: 1 } });
 
   useEffect(() => {
     document.title = 'Student Directory';
@@ -57,7 +72,7 @@ export default function Students() {
 
   const exportCsv = () => downloadCSV('students.csv',
     ['Adm No', 'Name', 'Class', 'Father', 'Mother', 'Phone', 'Alt Phone', 'Address', 'Documents Status', 'Birth Cert', 'Father Aadhaar', 'Mother Aadhaar'],
-    rows.map((s) => {
+    tf.rows.map((s) => {
       const count = (s.birthCertificateSubmitted ? 1 : 0) + (s.fatherAadhaarSubmitted ? 1 : 0) + (s.motherAadhaarSubmitted ? 1 : 0);
       return [
         s.admissionNo, s.name, s.classId?.name, s.father, s.mother || '', s.phone, s.alternatePhone || '', s.address || '',
@@ -70,7 +85,7 @@ export default function Students() {
 
   return (
     <Panel bodyless title="Student Directory"
-      sub={rows ? `${rows.length} student${rows.length === 1 ? '' : 's'}${user?.className ? ` · ${user.className} only` : ''}` : ' '}
+      sub={rows ? <>{rows.length} student{rows.length === 1 ? '' : 's'}{user?.className ? ` · ${user.className} only` : ''} <FilterCount tf={tf} /></> : ' '}
       actions={(
         <>
           <Input style={{ width: 190 }} placeholder="Name / Adm. No / Mobile"
@@ -96,14 +111,10 @@ export default function Students() {
       {!rows ? <Loading /> : (
         <div className="tbl-wrap">
           <table>
-            <thead>
-              <tr>
-                <th>Adm. No</th><th>Student</th><th>Class</th><th>Father / Guardian</th><th>Mother Name</th><th>Contact</th><th>Address</th><th>Documents</th><th />
-              </tr>
-            </thead>
+            <FilterHead columns={COLUMNS} tf={tf} />
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={9}><Empty>No student matches this filter.</Empty></td></tr>}
-              {rows.map((s) => (
+              {tf.rows.length === 0 && <tr><td colSpan={9}><Empty>No student matches this filter.</Empty></td></tr>}
+              {tf.rows.map((s) => (
                 <tr key={s._id} className="clickable" onClick={() => nav(`/students/${s._id}`)}>
                   <td className="mono tiny" style={{ color: 'var(--text-2)' }}>{s.admissionNo}</td>
                   <td>

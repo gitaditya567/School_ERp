@@ -1,9 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Panel, Kpi, Loading, ErrorBox, Empty, Drawer, Field, Input, Select } from '../components/ui';
 import { RS, fmtDate, monthName } from '../lib/format';
+import { useTableFilter, FilterHead, FilterCount } from '../components/TableFilter';
+
+const DB_COLUMNS = [
+  { key: 'date', label: 'Date', value: (e) => fmtDate(e.date), sortValue: (e) => new Date(e.date).getTime() },
+  { key: 'what', label: 'Particulars', value: (e) => `${e.title || ''} ${e.ref || ''}`, sortValue: (e) => e.title },
+  { key: 'head', label: 'Head / Mode', filter: 'select', value: (e) => e.sub },
+  { key: 'in', label: 'Receipt (Dr)', className: 't-right', value: (e) => (e.kind === 'in' ? e.amount : null), placeholder: '>0' },
+  { key: 'out', label: 'Payment (Cr)', className: 't-right', value: (e) => (e.kind === 'out' ? e.amount : null), placeholder: '>0' },
+];
 
 const HEADS = ['Staff Salary', 'Rent', 'Electricity', 'Teaching Material', 'Maintenance', 'Transport', 'Marketing', 'Misc'];
 const MODES = ['Bank Transfer', 'UPI', 'Cash', 'Cheque'];
@@ -25,13 +34,19 @@ export default function DayBook() {
   useEffect(() => { document.title = 'Day Book'; }, []);
   useEffect(() => { load(); }, [month]);
 
+  const allEntries = useMemo(() => (data ? [
+    ...data.receipts.map((r) => ({ id: r._id, date: r.date, kind: 'in', title: r.student?.name, sub: `Fee income · ${r.mode}`, ref: r.receiptNo, amount: r.total })),
+    ...data.expenses.map((e) => ({ id: e._id, date: e.date, kind: 'out', title: e.particulars || e.head, sub: `${e.head} · ${e.mode}`, ref: e.voucherNo, amount: e.amount })),
+  ].sort((a, b) => new Date(a.date) - new Date(b.date)) : null), [data]);
+  const tf = useTableFilter(allEntries, DB_COLUMNS);
+
   if (error) return <ErrorBox error={error} onRetry={load} />;
   if (!data) return <Loading />;
 
-  const entries = [
-    ...data.receipts.map((r) => ({ id: r._id, date: r.date, kind: 'in', title: r.student?.name, sub: `Fee income · ${r.mode}`, ref: r.receiptNo, amount: r.total })),
-    ...data.expenses.map((e) => ({ id: e._id, date: e.date, kind: 'out', title: e.particulars || e.head, sub: `${e.head} · ${e.mode}`, ref: e.voucherNo, amount: e.amount })),
-  ].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const entries = tf.rows;
+  const sum = (kind) => entries.filter((e) => e.kind === kind).reduce((t, e) => t + e.amount, 0);
+  const totalIn = tf.active ? sum('in') : data.income;
+  const totalOut = tf.active ? sum('out') : data.outgo;
 
   const save = async (body) => {
     try { await api.post('/expenses', body); setForm(null); load(); toast('Expense voucher saved'); }
@@ -48,7 +63,7 @@ export default function DayBook() {
           foot={<span>{RS([...data.expenses].sort((a, b) => b.amount - a.amount)[0]?.amount || 0)}</span>} />
       </div>
 
-      <Panel bodyless title="Day Book" sub="Fee income and school expenses in one place"
+      <Panel bodyless title="Day Book" sub={<>Fee income and school expenses in one place <FilterCount tf={tf} /></>}
         actions={(
           <>
             <Select style={{ width: 'auto' }} value={month} onChange={(e) => setMonth(e.target.value)}>
@@ -61,7 +76,7 @@ export default function DayBook() {
         )}>
         <div className="tbl-wrap">
           <table>
-            <thead><tr><th>Date</th><th>Particulars</th><th>Head / Mode</th><th className="t-right">Receipt (Dr)</th><th className="t-right">Payment (Cr)</th></tr></thead>
+            <FilterHead columns={DB_COLUMNS} tf={tf} />
             <tbody>
               {entries.length === 0 && <tr><td colSpan={5}><Empty>No entries for this month.</Empty></td></tr>}
               {entries.map((e) => (
@@ -77,8 +92,8 @@ export default function DayBook() {
             <tfoot>
               <tr style={{ background: 'var(--surface-2)' }}>
                 <td colSpan={3} style={{ fontWeight: 700 }}>Total</td>
-                <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>{RS(data.income)}</td>
-                <td className="num" style={{ fontWeight: 700, color: 'var(--crit)' }}>{RS(data.outgo)}</td>
+                <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>{RS(totalIn)}</td>
+                <td className="num" style={{ fontWeight: 700, color: 'var(--crit)' }}>{RS(totalOut)}</td>
               </tr>
             </tfoot>
           </table>

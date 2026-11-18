@@ -4,9 +4,34 @@ import { useAuth } from '../context/AuthContext';
 import { Panel, Kpi, Chip, Loading, ErrorBox, Empty, Input, Select, Bar } from '../components/ui';
 import ReceiptView from './ReceiptView';
 import { RS, fmtDate, downloadCSV } from '../lib/format';
+import { useTableFilter, FilterHead, FilterCount } from '../components/TableFilter';
 
 // Cash and Online are collected today; the rest remain for older receipts.
-const MODES = ['Cash', 'Online', 'UPI', 'Bank Transfer (NEFT/IMPS)', 'Cheque', 'Demand Draft', 'Cash (at office)', 'Card'];
+const MODES = ['Cash', 'Online', 'Online (Direct)', 'UPI', 'Bank Transfer (NEFT/IMPS)', 'Cheque', 'Demand Draft', 'Cash (at office)', 'Card'];
+
+const COLUMNS = [
+  { key: 'no', label: 'Receipt No', value: (r) => `${r.receiptNo}${r.cancelled?.at ? ' cancelled' : ''}${r.type === 'misc' ? ` other ${r.miscHead || ''}` : ''}`, sortValue: (r) => r.seq },
+  { key: 'date', label: 'Date', value: (r) => fmtDate(r.date), sortValue: (r) => new Date(r.date).getTime() },
+  { key: 'student', label: 'Student', value: (r) => r.student?.name },
+  { key: 'class', label: 'Class', filter: 'select', value: (r) => r.classId?.name },
+  { key: 'inst', label: 'Instalments / Head', value: (r) => (r.type === 'misc' ? r.miscHead || 'Misc Fee' : r.lines.map((l) => l.instNo).join(', ')) },
+  { key: 'mode', label: 'Mode', filter: 'select', value: (r) => r.mode },
+  { key: 'by', label: 'By', filter: 'select', value: (r) => r.collectedBy?.name },
+  { key: 'gross', label: 'Gross', className: 't-right', value: (r) => r.gross, placeholder: '>1000' },
+  { key: 'disc', label: 'Disc.', className: 't-right', value: (r) => r.discount, placeholder: '>0' },
+  { key: 'late', label: 'Late', className: 't-right', value: (r) => r.lateFee, placeholder: '>0' },
+  { key: 'total', label: 'Received', className: 't-right', value: (r) => r.total, placeholder: '>1000' },
+];
+
+/** Same shape as the server totals, for the rows a column filter leaves visible (cancelled excluded). */
+function sumTotals(list) {
+  const t = { count: 0, gross: 0, discount: 0, lateFee: 0, total: 0, byMode: {} };
+  list.filter((r) => !r.cancelled?.at).forEach((r) => {
+    t.count += 1; t.gross += r.gross || 0; t.discount += r.discount || 0; t.lateFee += r.lateFee || 0; t.total += r.total || 0;
+    t.byMode[r.mode] = (t.byMode[r.mode] || 0) + (r.total || 0);
+  });
+  return t;
+}
 
 export default function Receipts() {
   const { can } = useAuth();
@@ -14,6 +39,7 @@ export default function Receipts() {
   const [error, setError] = useState(null);
   const [f, setF] = useState({ search: '', from: '', to: '', mode: '' });
   const [open, setOpen] = useState(null);
+  const tf = useTableFilter(data?.receipts, COLUMNS);
 
   const load = () => { setError(null); api.get('/receipts', { params: f }).then(setData).catch(setError); };
   useEffect(() => { document.title = 'Receipt Register'; }, []);
@@ -25,7 +51,10 @@ export default function Receipts() {
 
   if (error) return <ErrorBox error={error} onRetry={load} />;
   if (!data) return <Loading />;
-  const { receipts, totals, nextReceiptNo } = data;
+  const { totals: serverTotals, nextReceiptNo } = data;
+  // Column filters narrow the table, its totals and the exports alike.
+  const receipts = tf.rows;
+  const totals = tf.active ? sumTotals(receipts) : serverTotals;
   const hasCancelled = receipts.some((r) => r.cancelled?.at);
 
   const exportCSV = () => {
@@ -371,12 +400,12 @@ export default function Receipts() {
     <div className="stack">
       <div className="kpis">
         <Kpi label="Receipts" value={totals.count} foot={<span>Next number {nextReceiptNo}</span>} />
-        <Kpi accent label="Total collected" value={RS(totals.total)} foot={<span>Filtered range</span>} />
+        <Kpi accent label="Total collected" value={RS(totals.total)} foot={<span>{tf.active ? 'Column filters applied' : 'Filtered range'}</span>} />
         <Kpi label="Discount given" value={RS(totals.discount)} color="var(--brand)" foot={<span>In the concession register</span>} />
         <Kpi label="Late fee collected" value={RS(totals.lateFee)} color="var(--warn)" foot={<span>Per the late-fee rule</span>} />
       </div>
 
-      <Panel bodyless title="Receipt Register" sub="Cancelled receipts keep their number — it is never reused"
+      <Panel bodyless title="Receipt Register" sub={<>Cancelled receipts keep their number — it is never reused <FilterCount tf={tf} /></>}
         actions={(
           <>
             <Input style={{ width: 170 }} placeholder="Receipt no." value={f.search} onChange={(e) => setF({ ...f, search: e.target.value })} />
@@ -411,10 +440,7 @@ export default function Receipts() {
         )}>
         <div className="tbl-wrap">
           <table>
-            <thead>
-              <tr><th>Receipt No</th><th>Date</th><th>Student</th><th>Class</th><th>Instalments / Head</th><th>Mode</th><th>By</th>
-                <th className="t-right">Gross</th><th className="t-right">Disc.</th><th className="t-right">Late</th><th className="t-right">Received</th></tr>
-            </thead>
+            <FilterHead columns={COLUMNS} tf={tf} />
             <tbody>
               {receipts.length === 0 && <tr><td colSpan={11}><Empty>No receipts in this range.</Empty></td></tr>}
               {receipts.map((r) => (

@@ -5,6 +5,17 @@ import { useAuth } from '../context/AuthContext';
 import { Panel, Kpi, Chip, Bar, Loading, ErrorBox, Empty } from '../components/ui';
 import { CashFlowChart, Donut, Sparkline } from '../components/Charts';
 import { RS, monthName } from '../lib/format';
+import { useTableFilter, FilterHead } from '../components/TableFilter';
+
+const pctOf = (r) => (r.demand ? Math.round((r.collected / r.demand) * 100) : 0);
+const INST_COLUMNS = [
+  { key: 'inst', label: 'Inst.', value: (r) => r.instNo, sortValue: (r) => r.order ?? r.instNo },
+  { key: 'month', label: 'Due month', value: (r) => r.month },
+  { key: 'demand', label: 'Net demand', className: 't-right', value: (r) => r.demand, placeholder: '>0' },
+  { key: 'coll', label: 'Collected', className: 't-right', value: (r) => r.collected, placeholder: '>0' },
+  { key: 'pct', label: 'Progress', style: { width: 150 }, value: (r) => pctOf(r), placeholder: '<100' },
+  { key: 'pending', label: 'Pending', className: 't-right', value: (r) => r.pending || 0, placeholder: '>0' },
+];
 
 export default function Dashboard() {
   const { can, canView, user } = useAuth();
@@ -12,6 +23,7 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [mode, setMode] = useState('both');
+  const instTf = useTableFilter(data?.instalments, INST_COLUMNS);
 
   const load = () => {
     setError(null);
@@ -117,12 +129,10 @@ export default function Dashboard() {
         <Panel bodyless title="Instalment-wise status" sub="Click a row for that month's due list">
           <div className="tbl-wrap">
             <table>
-              <thead>
-                <tr><th>Inst.</th><th>Due month</th><th className="t-right">Net demand</th><th className="t-right">Collected</th><th style={{ width: 150 }}>Progress</th><th className="t-right">Pending</th></tr>
-              </thead>
+              <FilterHead columns={INST_COLUMNS} tf={instTf} />
               <tbody>
-                {instalments.length === 0 && <tr><td colSpan={6}><Empty>No fee plan yet.</Empty></td></tr>}
-                {instalments.map((r) => {
+                {instTf.rows.length === 0 && <tr><td colSpan={6}><Empty>No fee plan yet.</Empty></td></tr>}
+                {instTf.rows.map((r) => {
                   const pct = r.demand ? Math.round((r.collected / r.demand) * 100) : 0;
                   return (
                     <tr key={r.instNo} className="clickable" onClick={() => canView('reports') && nav('/reports')}>

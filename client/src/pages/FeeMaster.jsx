@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Panel, Chip, Drawer, Field, Input, Select, Loading, ErrorBox, Empty } from '../components/ui';
 import { RS, RS0, fmtDate, monthName } from '../lib/format';
+import { useTableFilter, FilterHead } from '../components/TableFilter';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthLabel = (d) => (d ? `${MON[new Date(d).getMonth()]} ${new Date(d).getFullYear()}` : '');
@@ -46,6 +47,27 @@ export default function FeeMaster() {
     }));
     return m;
   }, [klass]);
+
+  const planColumns = useMemo(() => [
+    { key: 'no', label: 'Inst.', value: (p) => p.no, sortValue: (p) => new Date(p.dueDate).getTime() },
+    { key: 'month', label: 'Due month', value: (p) => p.month, sortValue: (p) => new Date(p.dueDate).getTime() },
+    { key: 'date', label: 'Due date', value: (p) => fmtDate(p.dueDate), sortValue: (p) => new Date(p.dueDate).getTime() },
+    { key: 'heads', label: 'Fee particulars', value: (p) => [...new Set(p.parts.map((x) => x.head?.name || 'Head'))].join(' + ') },
+    { key: 'break', label: 'Break-up', className: 't-right', value: (p) => p.parts.map((x) => x.amount).join(' + ') },
+    { key: 'total', label: 'Total', className: 't-right', value: (p) => p.parts.reduce((t, x) => t + x.amount, 0), placeholder: '>0' },
+    { key: 'coll', label: 'Collected', filter: 'select', value: (p) => (collected[p.no] ? 'Collected' : 'None yet'), sortValue: (p) => collected[p.no] || 0 },
+    ...(edit ? [{ key: 'actions', label: 'Actions', className: 't-right', filter: 'none' }] : []),
+  ], [collected, edit]);
+  const headColumns = useMemo(() => [
+    { key: 'name', label: 'Head', value: (h) => h.name },
+    { key: 'code', label: 'Code', value: (h) => h.code },
+    { key: 'type', label: 'Type', filter: 'select', value: (h) => h.type },
+    { key: 'amt', label: `In ${klass?.name || 'class'}`, className: 't-right', value: (h) => headTotals[h._id] || 0, placeholder: '>0' },
+    { key: 'used', label: 'Used by', value: (h) => (h.usedBy.length ? h.usedBy.join(', ') : 'not used') },
+    ...(edit ? [{ key: 'actions', label: 'Actions', className: 't-right', filter: 'none' }] : []),
+  ], [klass, headTotals, edit]);
+  const planTf = useTableFilter(klass?.plan, planColumns);
+  const headTf = useTableFilter(heads, headColumns);
 
   if (error) return <ErrorBox error={error} onRetry={loadAll} />;
   if (!classes) return <Loading />;
@@ -95,13 +117,10 @@ export default function FeeMaster() {
 
             <div className="tbl-wrap">
               <table>
-                <thead>
-                  <tr><th>Inst.</th><th>Due month</th><th>Due date</th><th>Fee particulars</th>
-                    <th className="t-right">Break-up</th><th className="t-right">Total</th><th>Collected</th>{edit && <th className="t-right">Actions</th>}</tr>
-                </thead>
+                <FilterHead columns={planColumns} tf={planTf} />
                 <tbody>
-                  {klass.plan.length === 0 && <tr><td colSpan={edit ? 8 : 7}><Empty>No instalment yet — add the first one to build {klass.name}’s fee plan.</Empty></td></tr>}
-                  {klass.plan.map((p) => {
+                  {planTf.rows.length === 0 && <tr><td colSpan={edit ? 8 : 7}><Empty>{klass.plan.length ? 'No instalment matches the filter.' : `No instalment yet — add the first one to build ${klass.name}’s fee plan.`}</Empty></td></tr>}
+                  {planTf.rows.map((p) => {
                     const pc = collected[p.no] || 0;
                     const total = p.parts.reduce((s, x) => s + x.amount, 0);
                     return (
@@ -151,10 +170,10 @@ export default function FeeMaster() {
         actions={edit && <button type="button" className="btn btn-sm btn-primary" onClick={() => setModal({ type: 'head' })}>+ Head</button>}>
         <div className="tbl-wrap">
           <table>
-            <thead><tr><th>Head</th><th>Code</th><th>Type</th><th className="t-right">In {klass?.name || 'class'}</th><th>Used by</th>{edit && <th className="t-right">Actions</th>}</tr></thead>
+            <FilterHead columns={headColumns} tf={headTf} />
             <tbody>
-              {heads.length === 0 && <tr><td colSpan={6}><Empty>No fee head yet. Run the seed script or add them here.</Empty></td></tr>}
-              {heads.map((h) => (
+              {headTf.rows.length === 0 && <tr><td colSpan={6}><Empty>{heads.length ? 'No fee head matches the filter.' : 'No fee head yet. Run the seed script or add them here.'}</Empty></td></tr>}
+              {headTf.rows.map((h) => (
                 <tr key={h._id}>
                   <td style={{ fontWeight: 600 }}>{h.name}</td>
                   <td className="mono tiny">{h.code}</td>

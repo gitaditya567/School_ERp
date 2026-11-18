@@ -43,6 +43,16 @@ export async function audit(req, action, entity, entityId, detail) {
   } catch { /* auditing must never break the request */ }
 }
 
+/** The active late-fee rule in words, e.g. for report headers. */
+export function lateFeeRuleText(school) {
+  if (school.lateFeeStructure === 'flat') {
+    return school.lateFeeAmount ? `₹${school.lateFeeAmount} late fee after the ${school.lateFeeFrom}th of the due month` : 'No late fee';
+  }
+  const t1 = school.lateFeeTier1Days ?? 10;
+  const t2 = school.lateFeeTier2Days ?? 20;
+  return `Late fee ₹${school.lateFeeTier1Amount ?? 200} (1–${t1} days) · ₹${school.lateFeeTier2Amount ?? 300} (${Number(t1) + 1}–${t2} days) · ₹${school.lateFeeTier3Amount ?? 500} (over ${t2} days)`;
+}
+
 /** Late fee owed on a ledger row if it is paid on `payDate`. */
 export function lateFeeFor(ledger, payDate, school) {
   if (school.lateFeeStructure === 'tiered') {
@@ -55,9 +65,11 @@ export function lateFeeFor(ledger, payDate, school) {
 
     if (daysLate <= 0) return 0;
 
-    const t1Days = Number(school.lateFeeTier1Days) || 10;
+    // 0 is a real setting (no grace days), so only a missing value falls back to the default.
+    const num = (v, dflt) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? dflt : Number(v));
+    const t1Days = num(school.lateFeeTier1Days, 10);
     const t1Amt = Number(school.lateFeeTier1Amount) || 0;
-    const t2Days = Number(school.lateFeeTier2Days) || 20;
+    const t2Days = Math.max(num(school.lateFeeTier2Days, 20), t1Days);
     const t2Amt = Number(school.lateFeeTier2Amount) || 0;
     const t3Amt = Number(school.lateFeeTier3Amount) || 0;
 
@@ -69,8 +81,10 @@ export function lateFeeFor(ledger, payDate, school) {
   // Flat late fee
   if (!school.lateFeeAmount) return 0;
   const due = new Date(ledger.dueDate);
-  const cutoff = new Date(Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), school.lateFeeFrom, 23, 59, 59));
-  return new Date(payDate) > cutoff ? school.lateFeeAmount : 0;
+  const fromDay = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), school.lateFeeFrom, 23, 59, 59);
+  const dueDay = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate(), 23, 59, 59);
+  // Never before the instalment is actually due, even if "late fee after" is set to an earlier day.
+  return new Date(payDate).getTime() > Math.max(fromDay, dueDay) ? school.lateFeeAmount : 0;
 }
 
 export function amountInWords(n) {

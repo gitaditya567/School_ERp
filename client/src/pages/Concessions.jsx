@@ -5,6 +5,19 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Panel, Kpi, Chip, Loading, ErrorBox, Empty, Bar, Drawer, Confirm, Field, Input, Select } from '../components/ui';
 import { RS, fmtDate, toInput, downloadCSV } from '../lib/format';
+import { useTableFilter, FilterHead, FilterCount } from '../components/TableFilter';
+
+const CON_COLUMNS = [
+  { key: 'date', label: 'Date', value: (d) => fmtDate(d.date), sortValue: (d) => new Date(d.date).getTime() },
+  { key: 'student', label: 'Student', value: (d) => `${d.student?.name || ''} ${d.student?.admissionNo || ''}`, sortValue: (d) => d.student?.name },
+  { key: 'class', label: 'Class', filter: 'select', value: (d) => d.classId?.name },
+  { key: 'inst', label: 'Inst.', filter: 'select', value: (d) => d.instNo },
+  { key: 'reason', label: 'Reason', filter: 'select', value: (d) => d.reason },
+  { key: 'by', label: 'Approved by', filter: 'select', value: (d) => d.approvedBy?.name },
+  { key: 'receipt', label: 'Receipt', value: (d) => d.receipt?.receiptNo },
+  { key: 'amount', label: 'Amount', className: 't-right', value: (d) => d.amount, placeholder: '>500' },
+];
+const CON_ACTIONS = { key: 'actions', label: 'Actions', className: 't-right', style: { width: 120 }, filter: 'none' };
 
 export default function Concessions() {
   const { can, user } = useAuth();
@@ -46,15 +59,19 @@ export default function Concessions() {
     loadData();
   }, []);
 
+  const reasonRows = data && selectedReasonFilter
+    ? data.concessions.filter((r) => r.reason?.trim().toLowerCase() === selectedReasonFilter.trim().toLowerCase())
+    : data?.concessions;
+  const columns = canManage ? [...CON_COLUMNS, CON_ACTIONS] : CON_COLUMNS;
+  const tf = useTableFilter(reasonRows, columns);
+
   if (error) return <ErrorBox error={error} onRetry={loadData} />;
   if (!data) return <Loading />;
 
   const { concessions: allRows, total, byReason, students } = data;
 
-  // Filter rows if user selected a specific reason filter
-  const rows = selectedReasonFilter
-    ? allRows.filter((r) => r.reason?.trim().toLowerCase() === selectedReasonFilter.trim().toLowerCase())
-    : allRows;
+  // Reason chip filter, then the column filters
+  const rows = tf.rows;
 
   const top = Object.entries(byReason).sort((a, b) => b[1] - a[1])[0];
 
@@ -72,7 +89,7 @@ export default function Concessions() {
       <Panel
         bodyless
         title={selectedReasonFilter ? `Concessions: "${selectedReasonFilter}"` : 'Concession & Discount Register'}
-        sub={selectedReasonFilter ? `Showing ${rows.length} entries for ${selectedReasonFilter}` : 'Every discount is stored with its reason and approver — audit ready'}
+        sub={selectedReasonFilter ? `Showing ${rows.length} entries for ${selectedReasonFilter}` : <>Every discount is stored with its reason and approver — audit ready <FilterCount tf={tf} /></>}
         actions={(
           <div className="row" style={{ gap: 8 }}>
             {selectedReasonFilter && (
@@ -121,19 +138,7 @@ export default function Concessions() {
       >
         <div className="tbl-wrap">
           <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Student</th>
-                <th>Class</th>
-                <th>Inst.</th>
-                <th>Reason</th>
-                <th>Approved by</th>
-                <th>Receipt</th>
-                <th className="t-right">Amount</th>
-                {canManage && <th className="t-right" style={{ width: 120 }}>Actions</th>}
-              </tr>
-            </thead>
+            <FilterHead columns={columns} tf={tf} />
             <tbody>
               {rows.length === 0 && (
                 <tr>

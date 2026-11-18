@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Panel, Chip, Drawer, Field, Input, Select, Loading, ErrorBox, Empty, Denied } from '../components/ui';
 import { Logo } from '../components/Layout';
 import { RS } from '../lib/format';
+import { useTableFilter, FilterHead } from '../components/TableFilter';
 
 export default function Settings() {
   const { can, reload, school: ctxSchool } = useAuth();
@@ -20,6 +21,19 @@ export default function Settings() {
   const [userForm, setUserForm] = useState(null);
   const fileRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const userColumns = useMemo(() => {
+    const roleOf = (u) => matrix?.roles.find((r) => r.key === u.role);
+    return [
+      { key: 'name', label: 'Name', value: (u) => `${u.name}${u.active ? '' : ' inactive'}`, sortValue: (u) => u.name },
+      { key: 'email', label: 'Email', value: (u) => u.email },
+      { key: 'role', label: 'Role', filter: 'select', value: (u) => roleOf(u)?.label },
+      { key: 'scope', label: 'Scope', filter: 'select', value: (u) => u.className || 'Whole school' },
+      { key: 'limit', label: 'Concession limit', value: (u) => { const r = roleOf(u); return r?.maxDiscount === null ? 'No limit' : r?.maxDiscount || 0; } },
+      { key: 'login', label: 'Last sign-in', value: (u) => (u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'), sortValue: (u) => (u.lastLoginAt ? new Date(u.lastLoginAt).getTime() : 0) },
+      { key: 'actions', label: 'Actions', className: 't-right', filter: 'none' },
+    ];
+  }, [matrix]);
+  const userTf = useTableFilter(users, userColumns);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -425,7 +439,7 @@ export default function Settings() {
                           <td style={{ padding: '10px 14px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
-                                {(Number(school.lateFeeTier1Days) || 10) + 1} to
+                                {Number(school.lateFeeTier1Days ?? 10) + 1} to
                               </span>
                               <Input
                                 className="input num"
@@ -469,7 +483,7 @@ export default function Settings() {
                                 border: '1px solid var(--line)',
                                 fontSize: 13
                               }}>
-                                {school.lateFeeTier2Days || 20}
+                                {school.lateFeeTier2Days ?? 20}
                               </span>
                               <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>days late</span>
                             </div>
@@ -507,7 +521,7 @@ export default function Settings() {
                 }}>
                   <span style={{ fontSize: 15 }}>⚡</span>
                   <div>
-                    <b>Live Rule:</b> 1 to {school.lateFeeTier1Days || 10}d = <b style={{ color: 'var(--brand)' }}>₹{school.lateFeeTier1Amount ?? 200}</b> · {(Number(school.lateFeeTier1Days) || 10) + 1} to {school.lateFeeTier2Days || 20}d = <b style={{ color: 'var(--warn)' }}>₹{school.lateFeeTier2Amount ?? 300}</b> · &gt;{school.lateFeeTier2Days || 20}d = <b style={{ color: 'var(--crit)' }}>₹{school.lateFeeTier3Amount ?? 500}</b>
+                    <b>Live Rule:</b> 1 to {school.lateFeeTier1Days ?? 10}d = <b style={{ color: 'var(--brand)' }}>₹{school.lateFeeTier1Amount ?? 200}</b> · {Number(school.lateFeeTier1Days ?? 10) + 1} to {school.lateFeeTier2Days ?? 20}d = <b style={{ color: 'var(--warn)' }}>₹{school.lateFeeTier2Amount ?? 300}</b> · &gt;{school.lateFeeTier2Days ?? 20}d = <b style={{ color: 'var(--crit)' }}>₹{school.lateFeeTier3Amount ?? 500}</b>
                   </div>
                 </div>
               </div>
@@ -530,10 +544,10 @@ export default function Settings() {
           actions={<button type="button" className="btn btn-sm btn-primary" onClick={() => setUserForm({})}>+ User</button>}>
           <div className="tbl-wrap">
             <table>
-              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Scope</th><th>Concession limit</th><th>Last sign-in</th><th className="t-right">Actions</th></tr></thead>
+              <FilterHead columns={userColumns} tf={userTf} />
               <tbody>
-                {users.length === 0 && <tr><td colSpan={7}><Empty>No user yet.</Empty></td></tr>}
-                {users.map((u) => {
+                {userTf.rows.length === 0 && <tr><td colSpan={7}><Empty>No user yet.</Empty></td></tr>}
+                {userTf.rows.map((u) => {
                   const role = matrix.roles.find((r) => r.key === u.role);
                   return (
                     <tr key={u.id}>

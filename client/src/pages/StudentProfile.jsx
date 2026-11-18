@@ -9,6 +9,28 @@ import StudentDocumentModal from '../components/StudentDocumentModal';
 import ReceiptView from './ReceiptView';
 import { RS, fmtDate, initials, statusOf } from '../lib/format';
 import { printAdmissionSlip } from '../lib/printSlip';
+import { useTableFilter, FilterHead } from '../components/TableFilter';
+
+const LEDGER_COLUMNS = [
+  { key: 'inst', label: 'Inst.', value: (l) => l.instNo, sortValue: (l) => l.order ?? new Date(l.dueDate).getTime() },
+  { key: 'month', label: 'Due month', value: (l) => `${l.month} ${fmtDate(l.dueDate)}`, sortValue: (l) => new Date(l.dueDate).getTime() },
+  { key: 'gross', label: 'Gross', className: 't-right', value: (l) => l.gross, placeholder: '>0' },
+  { key: 'disc', label: 'Discount', className: 't-right', value: (l) => l.discount, placeholder: '>0' },
+  { key: 'late', label: 'Late', className: 't-right', value: (l) => l.lateFee, placeholder: '>0' },
+  { key: 'paid', label: 'Paid', className: 't-right', value: (l) => l.paid, placeholder: '>0' },
+  { key: 'bal', label: 'Balance', className: 't-right', value: (l) => l.balance, placeholder: '>0' },
+  { key: 'status', label: 'Status', filter: 'select', value: (l) => statusOf(l).t },
+];
+const PAY_COLUMNS = [
+  { key: 'receipt', label: 'Receipt', placeholder: 'No. / date / mode',
+    value: (r) => [r.receiptNo, fmtDate(r.date), r.mode, r.type === 'misc' ? r.miscHead : (r.lines || []).map((l) => l.instNo).join(' '), r.cancelled?.at ? 'cancelled' : ''].join(' '),
+    sortValue: (r) => new Date(r.date).getTime() },
+  { key: 'amount', label: 'Amount', className: 't-right', value: (r) => r.total, placeholder: '>0' },
+];
+const sumLedger = (rows) => rows.reduce((t, l) => ({
+  gross: t.gross + (l.gross || 0), discount: t.discount + (l.discount || 0), lateFee: t.lateFee + (l.lateFee || 0),
+  paid: t.paid + (l.paid || 0), outstanding: t.outstanding + (l.balance || 0),
+}), { gross: 0, discount: 0, lateFee: 0, paid: 0, outstanding: 0 });
 
 export default function StudentProfile() {
   const { id } = useParams();
@@ -29,10 +51,13 @@ export default function StudentProfile() {
 
   const load = () => { setError(null); api.get(`/students/${id}`).then(setData).catch(setError); };
   useEffect(() => { document.title = 'Student Ledger'; load(); }, [id]);
+  const ledgerTf = useTableFilter(data?.ledger, LEDGER_COLUMNS);
+  const payTf = useTableFilter(data?.receipts, PAY_COLUMNS);
 
   if (error) return <ErrorBox error={error} onRetry={load} />;
   if (!data) return <Loading />;
-  const { student: s, ledger, receipts, totals } = data;
+  const { student: s, totals } = data;
+  const ledgerTot = ledgerTf.active ? sumLedger(ledgerTf.rows) : totals;
 
   const updatePhoto = async (newPhoto) => {
     try {
@@ -247,13 +272,10 @@ export default function StudentProfile() {
         <Panel bodyless title="Fee Ledger" sub={`Instalment wise · ${s.classId?.name} plan`}>
           <div className="tbl-wrap">
             <table>
-              <thead>
-                <tr><th>Inst.</th><th>Due month</th><th className="t-right">Gross</th><th className="t-right">Discount</th>
-                  <th className="t-right">Late</th><th className="t-right">Paid</th><th className="t-right">Balance</th><th>Status</th></tr>
-              </thead>
+              <FilterHead columns={LEDGER_COLUMNS} tf={ledgerTf} />
               <tbody>
-                {ledger.length === 0 && <tr><td colSpan={8}><Empty>No ledger rows.</Empty></td></tr>}
-                {ledger.map((l) => {
+                {ledgerTf.rows.length === 0 && <tr><td colSpan={8}><Empty>No ledger rows.</Empty></td></tr>}
+                {ledgerTf.rows.map((l) => {
                   const st = statusOf(l);
                   return (
                     <tr key={l._id}>
@@ -271,12 +293,12 @@ export default function StudentProfile() {
               </tbody>
               <tfoot>
                 <tr style={{ background: 'var(--surface-2)' }}>
-                  <td colSpan={2} style={{ fontWeight: 700 }}>Total</td>
-                  <td className="num" style={{ fontWeight: 700 }}>{RS(totals.gross)}</td>
-                  <td className="num" style={{ fontWeight: 700, color: 'var(--brand)' }}>{RS(totals.discount)}</td>
-                  <td className="num" style={{ fontWeight: 700 }}>{RS(totals.lateFee)}</td>
-                  <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>{RS(totals.paid)}</td>
-                  <td className="num" style={{ fontWeight: 700 }}>{RS(totals.outstanding)}</td>
+                  <td colSpan={2} style={{ fontWeight: 700 }}>Total{ledgerTf.active ? ' (filtered)' : ''}</td>
+                  <td className="num" style={{ fontWeight: 700 }}>{RS(ledgerTot.gross)}</td>
+                  <td className="num" style={{ fontWeight: 700, color: 'var(--brand)' }}>{RS(ledgerTot.discount)}</td>
+                  <td className="num" style={{ fontWeight: 700 }}>{RS(ledgerTot.lateFee)}</td>
+                  <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>{RS(ledgerTot.paid)}</td>
+                  <td className="num" style={{ fontWeight: 700 }}>{RS(ledgerTot.outstanding)}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -287,9 +309,10 @@ export default function StudentProfile() {
         <Panel bodyless title="Payment history">
           <div className="tbl-wrap">
             <table>
+              <FilterHead columns={PAY_COLUMNS} tf={payTf} />
               <tbody>
-                {receipts.length === 0 && <tr><td><Empty>No payment recorded yet.</Empty></td></tr>}
-                {receipts.map((r) => (
+                {payTf.rows.length === 0 && <tr><td colSpan={2}><Empty>No payment recorded yet.</Empty></td></tr>}
+                {payTf.rows.map((r) => (
                   <tr key={r._id} className="clickable" onClick={() => setReceiptId(r._id)}>
                     <td>
                       <div className="mono tiny" style={{ color: 'var(--brand)', fontWeight: 600 }}>{r.receiptNo}</div>

@@ -41,6 +41,21 @@ export const update = asyncHandler(async (req, res) => {
       }
     }
   });
+  // A late-fee rule that cannot be applied as written is refused rather than silently reinterpreted.
+  // School.current() is cached, so drop the half-edited copy before refusing.
+  const refuse = (msg) => { School.invalidateCache(); throw new ApiError(422, msg); };
+  if (school.lateFeeStructure === 'flat') {
+    if (school.lateFeeFrom < 1 || school.lateFeeFrom > 31) refuse('Late fee "after day" must be between 1 and 31.');
+    if (school.lateFeeAmount < 0) refuse('Late fee amount cannot be negative.');
+  } else {
+    if (school.lateFeeTier1Days < 0) refuse('Tier 1 days cannot be negative.');
+    if (school.lateFeeTier2Days <= school.lateFeeTier1Days) {
+      refuse(`Tier 2 days (${school.lateFeeTier2Days}) must be more than Tier 1 days (${school.lateFeeTier1Days}).`);
+    }
+    if ([school.lateFeeTier1Amount, school.lateFeeTier2Amount, school.lateFeeTier3Amount].some((a) => a < 0)) {
+      refuse('Late fee amounts cannot be negative.');
+    }
+  }
   await school.save();
   School.invalidateCache();
 

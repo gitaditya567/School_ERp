@@ -9,6 +9,8 @@ import { assertClassScope } from '../middleware/auth.js';
 import { createLedgerForStudent } from '../services/ledger.js';
 import { invalidateClassesCache } from './masterController.js';
 
+const admissionOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
 const totalsFor = (rows) => {
   const t = { gross: 0, discount: 0, lateFee: 0, paid: 0, outstanding: 0, overdue: 0 };
   const now = new Date();
@@ -24,7 +26,7 @@ const totalsFor = (rows) => {
 
 /** GET /api/students?search=&classId=&status=&page= */
 export const list = asyncHandler(async (req, res) => {
-  const { search = '', classId = '', status = '', page = 1, limit = 100 } = req.query;
+  const { search = '', classId = '', status = '', page = 1, limit } = req.query;
   const filter = {};
   if (req.scopeClass) filter.classId = req.scopeClass;
   else if (classId) filter.classId = classId;
@@ -33,11 +35,11 @@ export const list = asyncHandler(async (req, res) => {
     filter.$or = [{ name: rx }, { admissionNo: rx }, { phone: rx }, { alternatePhone: rx }, { father: rx }];
   }
 
-  const [docs, total] = await Promise.all([
-    Student.find(filter).populate('classId', 'name code').sort('name')
-      .skip((page - 1) * limit).limit(Number(limit)).lean(),
-    Student.countDocuments(filter),
-  ]);
+  // Whole directory in admission-number order (natural: PNJ26-2 before PNJ26-10); paging only when asked for.
+  let docs = await Student.find(filter).populate('classId', 'name code').lean();
+  docs.sort((a, b) => admissionOrder.compare(a.admissionNo || '', b.admissionNo || ''));
+  const total = docs.length;
+  if (limit) docs = docs.slice((Number(page) - 1) * Number(limit), Number(page) * Number(limit));
   const ids = docs.map((d) => d._id);
   const rows = ids.length ? await Ledger.find({ student: { $in: ids } }).lean() : [];
   const byStudent = new Map();
